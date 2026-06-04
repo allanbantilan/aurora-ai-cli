@@ -241,15 +241,22 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
 }
 
 const WRITE_TOOLS = new Set(['write_file', 'edit_file', 'run_command']);
-const CLAIM_RE = /\bI(?:'ve| have)? (?:added|updated|edited|created|fixed|changed|wrote|applied|modified|removed|deleted|renamed|replaced|implemented|refactored|moved)\b/i;
+// Claim language: "I/we (have) added ..." anywhere, or a past-tense change verb
+// at the start of the message/a sentence ("Replaced the original page with...",
+// "Created a new file **about.html**..."), as real model summaries phrase it.
+const CLAIM_VERBS =
+  'added|updated|edited|created|fixed|changed|wrote|applied|modified|removed|deleted|renamed|replaced|implemented|refactored|moved';
+const CLAIM_RE = new RegExp(
+  `(?:\\b(?:I|we)(?:'ve| have)? |(?:^|[.!?]\\s+)\\**)(?:${CLAIM_VERBS})\\b`,
+  'im'
+);
 
 /**
- * True when the assistant's reply reads like it applied changes (claim language
- * + a fenced code block) but no write/edit tool ran this turn.
+ * True when the assistant's reply reads like it applied changes but no
+ * write-capable tool ran this turn.
  */
 export function claimsUnappliedChanges(text, toolNames) {
   if (toolNames.some((n) => WRITE_TOOLS.has(n))) return false;
-  if (!text.includes('```')) return false;
   return CLAIM_RE.test(text);
 }
 

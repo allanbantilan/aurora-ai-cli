@@ -44,8 +44,24 @@ test('claimsUnappliedChanges ignores explanations without claim language', () =>
   assert.equal(claimsUnappliedChanges(text, []), false);
 });
 
-test('claimsUnappliedChanges ignores claims without a code block', () => {
-  assert.equal(claimsUnappliedChanges('I fixed the typo in the README.', []), false);
+test('claimsUnappliedChanges fires on claims even without a code block', () => {
+  // real phantom-edit summaries usually have no code fence at all
+  assert.equal(claimsUnappliedChanges('I fixed the typo in the README.', []), true);
+});
+
+test('claimsUnappliedChanges catches subject-less summary claims (real transcript)', () => {
+  for (const text of [
+    'Replaced the original page with a modern, Tailwind‑CSS based landing page.',
+    'Added a responsive navigation bar with a brand name and placeholder links, plus a simple footer.',
+    'Created a new file **about.html** with a matching modern Tailwind layout.',
+  ]) {
+    assert.equal(claimsUnappliedChanges(text, ['read_file']), true, text);
+  }
+});
+
+test('claimsUnappliedChanges ignores mid-sentence past-tense verbs', () => {
+  assert.equal(claimsUnappliedChanges('The navbar added in v2 uses flexbox.', []), false);
+  assert.equal(claimsUnappliedChanges('You should keep the code added by the plugin.', []), false);
 });
 
 test('claimsUnappliedChanges matches "I have updated" and "I updated" variants', () => {
