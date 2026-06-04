@@ -5,7 +5,7 @@ import { PassThrough } from 'node:stream';
 import readlinePromises from 'node:readline/promises';
 import { promptLabel, createSpinner } from '../src/ui.js';
 import { CodeHighlighter } from '../src/ui.js';
-import { menuReduce, selectMenu, multiMenuReduce, formatModelStatus } from '../src/ui.js';
+import { menuReduce, selectMenu, multiMenuReduce, formatModelStatus, statusLine } from '../src/ui.js';
 
 test('promptLabel shows the cwd folder name', () => {
   const label = promptLabel(path.join('C:', 'projects', 'my-app'));
@@ -162,4 +162,17 @@ test('formatModelStatus formats health buckets', () => {
   assert.match(formatModelStatus({ uptime: null, ok: true }), /no data/);
   assert.match(formatModelStatus({ uptime: null, ok: false }), /down/);
   assert.match(formatModelStatus(null), /no data/);
+});
+
+test('statusLine shows full cwd, active model and fallback count', () => {
+  const line = statusLine('C:\\projects\\demo', ['deepseek/deepseek-chat:free', 'qwen/qwen3-coder:free', 'z-ai/glm-4.5-air:free']);
+  assert.match(line, /C:\\projects\\demo/);
+  assert.match(line, /deepseek\/deepseek-chat:free/);
+  assert.match(line, /\+2 fallbacks/);
+});
+
+test('statusLine with a single model has no fallback suffix', () => {
+  const line = statusLine('/home/x', ['m/one']);
+  assert.match(line, /m\/one/);
+  assert.doesNotMatch(line, /fallback/);
 });

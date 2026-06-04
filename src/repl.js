@@ -6,6 +6,7 @@ import { systemPrompt } from './prompt.js';
 import { fetchModelStatus } from './client.js';
 import {
   promptLabel,
+  statusLine,
   createSpinner,
   CodeHighlighter,
   selectMenu,
@@ -126,7 +127,8 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
   console.log(`\naurora — model: ${chainLabel()}\nType a request, or /help for commands.`);
 
   while (true) {
-    const input = (await rl.question(`\n${promptLabel()}`)).trim();
+    console.log(`\n${statusLine(process.cwd(), chain)}`);
+    const input = (await rl.question(promptLabel())).trim();
     if (!input) continue;
 
     if (input === '/exit') break;

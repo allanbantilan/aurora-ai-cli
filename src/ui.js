@@ -27,6 +27,12 @@ export function promptLabel(cwd = process.cwd()) {
   return `${cyan(path.basename(cwd))} > `;
 }
 
+/** Dim one-line status: full cwd · active model (+N fallbacks). */
+export function statusLine(cwd, chain) {
+  const extra = chain.length > 1 ? ` (+${chain.length - 1} fallback${chain.length > 2 ? 's' : ''})` : '';
+  return dim(`${cwd} · ${chain[0] ?? 'no model'}${extra}`);
+}
+
 const FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 const ASCII_FRAMES = ['-', '\\', '|', '/'];
 
