@@ -21,6 +21,7 @@ export const dim = wrap(2, 22);
 export const forceDim = esc(2, 22);
 export const forceYellow = esc(33, 39);
 export const forceCyan = esc(36, 39);
+export const forceGreen = esc(32, 39);
 
 export function promptLabel(cwd = process.cwd()) {
   return `${cyan(path.basename(cwd))} > `;
@@ -145,6 +146,30 @@ export function menuReduce(state, key = {}) {
 }
 
 /**
+ * Take over the readline interface's input stream in raw keypress mode.
+ * Detaches readline's keypress listeners (terminal-mode readline consumes
+ * input via 'keypress'; the stream's 'data' listener is the shared
+ * emitKeypressEvents bridge and must stay attached).
+ * Returns a release() that restores everything.
+ */
+function withRawKeys(rl, onKey) {
+  const stdin = rl.input ?? process.stdin;
+  rl.pause();
+  const prevKeypress = stdin.listeners('keypress');
+  prevKeypress.forEach((l) => stdin.removeListener('keypress', l));
+  readline.emitKeypressEvents(stdin);
+  if (stdin.isTTY) stdin.setRawMode(true);
+  stdin.resume();
+  stdin.on('keypress', onKey);
+  return () => {
+    stdin.removeListener('keypress', onKey);
+    if (stdin.isTTY) stdin.setRawMode(false);
+    prevKeypress.forEach((l) => stdin.on('keypress', l));
+    rl.resume();
+  };
+}
+
+/**
  * Arrow-key selection menu. options: [{label, value, isEscape?}].
  * Esc resolves to the option flagged isEscape (or the first option).
  * Temporarily detaches the shared readline interface's keypress listeners so
@@ -164,28 +189,9 @@ export function selectMenu(rl, title, options) {
       });
     };
 
-    // Detach readline's keypress handling for the duration of the menu.
-    // (terminal-mode readline consumes input via its 'keypress' listener; the
-    // stream's 'data' listener is the shared emitKeypressEvents bridge and
-    // must stay attached so our own keypress events keep flowing)
-    const stdin = rl.input ?? process.stdin;
-    rl.pause();
-    const prevKeypress = stdin.listeners('keypress');
-    prevKeypress.forEach((l) => stdin.removeListener('keypress', l));
-    readline.emitKeypressEvents(stdin);
-    if (stdin.isTTY) stdin.setRawMode(true);
-    stdin.resume();
-
-    const cleanup = () => {
-      stdin.removeListener('keypress', onKey);
-      if (stdin.isTTY) stdin.setRawMode(false);
-      prevKeypress.forEach((l) => stdin.on('keypress', l));
-      rl.resume();
-    };
-
-    const onKey = (str, key = {}) => {
+    const release = withRawKeys(rl, (str, key = {}) => {
       if (key.ctrl && key.name === 'c') {
-        cleanup();
+        release();
         console.log('\n(interrupted — exiting)');
         process.exit(0);
       }
@@ -193,14 +199,94 @@ export function selectMenu(rl, title, options) {
       if (next === state) return;
       state = next;
       if (state.done) {
-        cleanup();
+        release();
         resolve(options[state.escaped ? escIndex : state.index].value);
       } else {
         render(true);
       }
+    });
+    render(false);
+  });
+}
+
+/** Pure keypress → state transition for multiSelectMenu. checked is an ORDERED array of indices. */
+export function multiMenuReduce(state, key = {}) {
+  const { index, count, checked } = state;
+  if (key.name === 'up') return { ...state, index: (index - 1 + count) % count };
+  if (key.name === 'down') return { ...state, index: (index + 1) % count };
+  if (key.name === 'space') return { ...state, checked: toggleChecked(checked, index) };
+  if (/^[1-9]$/.test(key.sequence ?? '') && Number(key.sequence) <= count) {
+    return { ...state, checked: toggleChecked(checked, Number(key.sequence) - 1) };
+  }
+  if (key.name === 'return') return checked.length ? { ...state, done: true } : state;
+  if (key.name === 'escape') return { ...state, done: true, cancelled: true };
+  return state;
+}
+
+function toggleChecked(checked, i) {
+  return checked.includes(i) ? checked.filter((c) => c !== i) : [...checked, i];
+}
+
+/** Short display name for a model id: drop author prefix and :free suffix. */
+export function shortModelName(id) {
+  return String(id).split('/').pop().replace(':free', '');
+}
+
+/** Render a {uptime, ok}|null health record as a colored status label. */
+export function formatModelStatus(health) {
+  if (!health) return dim('○ no data');
+  if (!health.ok) return red('● down');
+  if (typeof health.uptime !== 'number') return dim('○ no data');
+  const pct = `${Math.round(health.uptime)}% up`;
+  if (health.uptime >= 90) return `${forceGreen('●')} ${pct}`;
+  if (health.uptime >= 50) return `${yellow('●')} ${pct}`;
+  return `${red('●')} ${pct}`;
+}
+
+/**
+ * Checkbox menu: Space/digits toggle, Enter confirms (>=1 required), Esc cancels.
+ * options: [{label, value, statusText?}]; preChecked: ordered indices.
+ * Resolves the checked VALUES in check order, or null when cancelled.
+ */
+export function multiSelectMenu(rl, title, options, preChecked = []) {
+  return new Promise((resolve) => {
+    let state = {
+      index: 0,
+      count: options.length,
+      checked: preChecked.filter((i) => i >= 0 && i < options.length),
+      done: false,
+      cancelled: false,
     };
 
-    stdin.on('keypress', onKey);
+    const render = (redraw) => {
+      if (redraw) process.stdout.write(`${ESC}[${options.length + 2}A`);
+      let out = `${ESC}[0J${title}\n`;
+      options.forEach((o, i) => {
+        const box = state.checked.includes(i) ? '◉' : '○';
+        const row = `${i === state.index ? '❯' : ' '} ${box} ${i + 1}. ${o.label}  ${o.statusText ?? ''}`;
+        out += `${i === state.index ? forceCyan(row) : row}\n`;
+      });
+      const order = state.checked.map((i) => shortModelName(options[i].value)).join(' → ');
+      out += `${forceDim(`${state.checked.length} selected${order ? ` — fallback order: ${order}` : ''}`)}\n`;
+      process.stdout.write(out);
+    };
+
+    const release = withRawKeys(rl, (str, key = {}) => {
+      if (key.ctrl && key.name === 'c') {
+        release();
+        console.log('\n(interrupted — exiting)');
+        process.exit(0);
+      }
+      const next = multiMenuReduce(state, key);
+      if (next === state) return;
+      state = next;
+      if (state.done) {
+        release();
+        resolve(state.cancelled ? null : state.checked.map((i) => options[i].value));
+      } else {
+        render(true);
+      }
+    });
     render(false);
   });
 }

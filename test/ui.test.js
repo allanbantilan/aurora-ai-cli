@@ -5,7 +5,7 @@ import { PassThrough } from 'node:stream';
 import readlinePromises from 'node:readline/promises';
 import { promptLabel, createSpinner } from '../src/ui.js';
 import { CodeHighlighter } from '../src/ui.js';
-import { menuReduce, selectMenu } from '../src/ui.js';
+import { menuReduce, selectMenu, multiMenuReduce, formatModelStatus } from '../src/ui.js';
 
 test('promptLabel shows the cwd folder name', () => {
   const label = promptLabel(path.join('C:', 'projects', 'my-app'));
@@ -117,4 +117,49 @@ test('selectMenu does not let readline eat the selection keystrokes', async () =
   ]);
   assert.equal(answer, 'hello');
   rl.close();
+});
+
+const mm = (over = {}) => ({ index: 0, count: 4, checked: [], done: false, cancelled: false, ...over });
+
+test('multiMenuReduce toggles with space preserving check order', () => {
+  let s = mm();
+  s = multiMenuReduce(s, { name: 'down' });
+  s = multiMenuReduce(s, { name: 'space' }); // check row 1
+  s = multiMenuReduce(s, { name: 'down' });
+  s = multiMenuReduce(s, { name: 'down' });
+  s = multiMenuReduce(s, { name: 'space' }); // check row 3
+  assert.deepEqual(s.checked, [1, 3]);
+  s = multiMenuReduce(s, { name: 'space' }); // uncheck row 3
+  assert.deepEqual(s.checked, [1]);
+});
+
+test('multiMenuReduce toggles via digits', () => {
+  let s = mm();
+  s = multiMenuReduce(s, { name: '2', sequence: '2' });
+  s = multiMenuReduce(s, { name: '4', sequence: '4' });
+  assert.deepEqual(s.checked, [1, 3]);
+  s = multiMenuReduce(s, { name: '9', sequence: '9' }); // out of range: identity
+  assert.deepEqual(s.checked, [1, 3]);
+});
+
+test('multiMenuReduce blocks enter with zero selections', () => {
+  const s = mm();
+  assert.equal(multiMenuReduce(s, { name: 'return' }), s); // identity: not done
+  const picked = multiMenuReduce(mm({ checked: [0] }), { name: 'return' });
+  assert.equal(picked.done, true);
+  assert.equal(picked.cancelled, false);
+});
+
+test('multiMenuReduce escape cancels', () => {
+  const s = multiMenuReduce(mm({ checked: [2] }), { name: 'escape' });
+  assert.deepEqual([s.done, s.cancelled], [true, true]);
+});
+
+test('formatModelStatus formats health buckets', () => {
+  assert.match(formatModelStatus({ uptime: 99.1, ok: true }), /99% up/);
+  assert.match(formatModelStatus({ uptime: 64, ok: true }), /64% up/);
+  assert.match(formatModelStatus({ uptime: 12, ok: true }), /12% up/);
+  assert.match(formatModelStatus({ uptime: null, ok: true }), /no data/);
+  assert.match(formatModelStatus({ uptime: null, ok: false }), /down/);
+  assert.match(formatModelStatus(null), /no data/);
 });
