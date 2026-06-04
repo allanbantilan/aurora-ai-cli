@@ -10,7 +10,7 @@ if (migrateConfig(config)) saveConfig(config);
 let apiKey = getApiKey(config);
 if (!apiKey) {
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-  apiKey = (await rl.question('Paste your OpenRouter API key (saved to ~/.jonathan-ai/config.json): ')).trim();
+  apiKey = (await rl.question('Paste your OpenRouter API key (saved to ~/.aurora/config.json): ')).trim();
   rl.close();
   if (!apiKey) {
     console.error('An API key is required. Get one at https://openrouter.ai/keys');

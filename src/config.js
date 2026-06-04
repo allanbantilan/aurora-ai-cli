@@ -2,13 +2,19 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 
-const CONFIG_FILE = path.join(os.homedir(), '.jonathan-ai', 'config.json');
+const CONFIG_FILE = path.join(os.homedir(), '.aurora', 'config.json');
+const LEGACY_CONFIG_FILE = path.join(os.homedir(), '.jonathan-ai', 'config.json');
 
-export function loadConfig(file = CONFIG_FILE) {
+export function loadConfig(file = CONFIG_FILE, legacyFile = file === CONFIG_FILE ? LEGACY_CONFIG_FILE : null) {
   try {
     return JSON.parse(fs.readFileSync(file, 'utf8'));
   } catch {
-    return {};
+    if (!legacyFile) return {};
+    try {
+      return JSON.parse(fs.readFileSync(legacyFile, 'utf8'));
+    } catch {
+      return {};
+    }
   }
 }
 

@@ -1,10 +1,10 @@
 {
-  "name": "jonathan-ai",
+  "name": "aurora",
   "version": "0.1.0",
   "description": "CLI coding agent powered by free OpenRouter models",
   "type": "module",
   "bin": {
-    "jonathan": "bin/jonathan.js"
+    "aurora": "bin/aurora.js"
   },
   "engines": {
     "node": ">=20"

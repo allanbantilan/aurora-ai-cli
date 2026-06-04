@@ -13,6 +13,15 @@ test('loadConfig returns {} when file is missing', () => {
   assert.deepEqual(loadConfig(tmpFile()), {});
 });
 
+test('loadConfig falls back to legacy config when aurora config is missing', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'aurora-cfg-'));
+  const auroraFile = path.join(dir, '.aurora', 'config.json');
+  const legacyFile = path.join(dir, '.jonathan-ai', 'config.json');
+  saveConfig({ apiKey: 'legacy-key' }, legacyFile);
+
+  assert.deepEqual(loadConfig(auroraFile, legacyFile), { apiKey: 'legacy-key' });
+});
+
 test('saveConfig then loadConfig round-trips', () => {
   const file = tmpFile();
   saveConfig({ apiKey: 'k', lastModel: 'm' }, file);

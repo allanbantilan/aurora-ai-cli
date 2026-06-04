@@ -114,7 +114,7 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
   const chainLabel = () =>
     `${chain[0]}${chain.length > 1 ? ` (+${chain.length - 1} fallback${chain.length > 2 ? 's' : ''})` : ''}`;
 
-  console.log(`\njonathan-ai — model: ${chainLabel()}\nType a request, or /help for commands.`);
+  console.log(`\naurora — model: ${chainLabel()}\nType a request, or /help for commands.`);
 
   while (true) {
     const input = (await rl.question(`\n${promptLabel()}`)).trim();
