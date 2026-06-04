@@ -1,9 +1,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
+import { PassThrough } from 'node:stream';
+import readlinePromises from 'node:readline/promises';
 import { promptLabel, createSpinner } from '../src/ui.js';
 import { CodeHighlighter } from '../src/ui.js';
-import { menuReduce } from '../src/ui.js';
+import { menuReduce, selectMenu } from '../src/ui.js';
 
 test('promptLabel shows the cwd folder name', () => {
   const label = promptLabel(path.join('C:', 'projects', 'my-app'));
@@ -89,4 +91,30 @@ test('menuReduce ignores out-of-range digits and unknown keys', () => {
 test('menuReduce flags escape', () => {
   const s = menuReduce({ index: 0, count: 3, done: false, escaped: false }, { name: 'escape' });
   assert.deepEqual([s.done, s.escaped], [true, true]);
+});
+
+test('selectMenu does not let readline eat the selection keystrokes', async () => {
+  const input = new PassThrough();
+  const output = new PassThrough();
+  output.on('data', () => {}); // drain so writes never block
+  const rl = readlinePromises.createInterface({ input, output, terminal: true });
+
+  const menuPromise = selectMenu(rl, 'Pick:', [
+    { label: 'A', value: 'a' },
+    { label: 'B', value: 'b' },
+  ]);
+  input.write('\r'); // Enter selects the first option
+  const value = await menuPromise;
+  assert.equal(value, 'a');
+
+  // The very next rl.question must receive the FIRST line typed after the
+  // menu — if readline buffered the menu's Enter, this hangs or misreads.
+  const answerPromise = rl.question('q> ');
+  input.write('hello\r');
+  const answer = await Promise.race([
+    answerPromise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error('rl.question deadlocked after menu')), 2000).unref()),
+  ]);
+  assert.equal(answer, 'hello');
+  rl.close();
 });

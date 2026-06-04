@@ -164,18 +164,31 @@ export function selectMenu(rl, title, options) {
       });
     };
 
-    // Detach readline's own keypress handling for the duration of the menu.
+    // Detach readline's own input handling for the duration of the menu.
+    // readline registers a 'data' listener (not 'keypress'), so both event
+    // types must be detached or readline eats the menu keystrokes.
+    const stdin = rl.input ?? process.stdin;
     rl.pause();
-    const previous = process.stdin.listeners('keypress');
-    previous.forEach((l) => process.stdin.removeListener('keypress', l));
-    readline.emitKeypressEvents(process.stdin);
-    if (process.stdin.isTTY) process.stdin.setRawMode(true);
-    process.stdin.resume();
+    const prevKeypress = stdin.listeners('keypress');
+    const prevData = stdin.listeners('data');
+    prevKeypress.forEach((l) => stdin.removeListener('keypress', l));
+    prevData.forEach((l) => stdin.removeListener('data', l));
+    // emitKeypressEvents short-circuits if its internal KEYPRESS_DECODER symbol
+    // is already set (installed by the readline interface). Delete it so the
+    // call below installs a fresh data→keypress bridge for our handler.
+    const kpDecoder = Object.getOwnPropertySymbols(stdin).find(
+      (s) => s.toString() === 'Symbol(keypress-decoder)',
+    );
+    if (kpDecoder) delete stdin[kpDecoder];
+    readline.emitKeypressEvents(stdin);
+    if (stdin.isTTY) stdin.setRawMode(true);
+    stdin.resume();
 
     const cleanup = () => {
-      process.stdin.removeListener('keypress', onKey);
-      if (process.stdin.isTTY) process.stdin.setRawMode(false);
-      previous.forEach((l) => process.stdin.on('keypress', l));
+      stdin.removeListener('keypress', onKey);
+      if (stdin.isTTY) stdin.setRawMode(false);
+      prevKeypress.forEach((l) => stdin.on('keypress', l));
+      prevData.forEach((l) => stdin.on('data', l));
       rl.resume();
     };
 
@@ -196,7 +209,7 @@ export function selectMenu(rl, title, options) {
       }
     };
 
-    process.stdin.on('keypress', onKey);
+    stdin.on('keypress', onKey);
     render(false);
   });
 }
