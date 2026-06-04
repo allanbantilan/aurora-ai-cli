@@ -29,11 +29,16 @@ test('saveConfig then loadConfig round-trips', () => {
 });
 
 test('getApiKey prefers env var over config', () => {
-  process.env.OPENROUTER_API_KEY = 'env-key';
-  assert.equal(getApiKey({ apiKey: 'cfg-key' }), 'env-key');
+  process.env.OPENROUTER_API_KEY = 'sk-env-key';
+  assert.equal(getApiKey({ apiKey: 'sk-cfg-key' }), 'sk-env-key');
   delete process.env.OPENROUTER_API_KEY;
-  assert.equal(getApiKey({ apiKey: 'cfg-key' }), 'cfg-key');
+  assert.equal(getApiKey({ apiKey: 'sk-cfg-key' }), 'sk-cfg-key');
   assert.equal(getApiKey({}), null);
+});
+
+test('getApiKey ignores clearly invalid saved keys', () => {
+  assert.equal(getApiKey({ apiKey: 'hello' }), null);
+  assert.equal(getApiKey({ apiKey: '' }), null);
 });
 
 test('migrateConfig converts lastModel to lastModels', () => {

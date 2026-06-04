@@ -24,7 +24,12 @@ export function saveConfig(config, file = CONFIG_FILE) {
 }
 
 export function getApiKey(config) {
-  return process.env.OPENROUTER_API_KEY || config.apiKey || null;
+  const key = process.env.OPENROUTER_API_KEY || config.apiKey || '';
+  return isApiKey(key) ? key : null;
+}
+
+function isApiKey(value) {
+  return typeof value === 'string' && value.trim().startsWith('sk-');
 }
 
 /** Normalize legacy config (lastModel → lastModels). Returns true if changed. */
