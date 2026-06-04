@@ -83,3 +83,9 @@ test('edit_file rejects non-unique old_string', () => {
     /2 times/
   );
 });
+
+test('edit_file treats $ patterns in new_string literally', () => {
+  const dir = tmpProject();
+  editFile.execute({ path: 'src/app.js', old_string: 'const x = 1;', new_string: 'const x = "$&$$";' }, dir);
+  assert.match(fs.readFileSync(path.join(dir, 'src', 'app.js'), 'utf8'), /const x = "\$&\$\$";/);
+});
