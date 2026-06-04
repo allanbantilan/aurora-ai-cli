@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createEchoSuppressor, claimsUnappliedChanges } from '../src/repl.js';
+import { createEchoSuppressor, claimsUnappliedChanges, completeCommand, commandList } from '../src/repl.js';
 
 test('createEchoSuppressor drops an exact first-line echo of the user input', () => {
   let out = '';
@@ -64,4 +64,23 @@ test('claimsUnappliedChanges matches extended claim verbs', () => {
   for (const v of ['modified', 'removed', 'implemented', 'replaced']) {
     assert.equal(claimsUnappliedChanges(`I ${v} the helper.${code}`, []), true, v);
   }
+});
+
+test('completeCommand completes a unique prefix', () => {
+  assert.deepEqual(completeCommand('/mo'), [['/model'], '/mo']);
+});
+
+test('completeCommand lists all commands for bare slash', () => {
+  const [hits] = completeCommand('/');
+  assert.deepEqual(hits, ['/model', '/clear', '/help', '/exit']);
+});
+
+test('completeCommand returns no hits for non-command input', () => {
+  assert.deepEqual(completeCommand('hello'), [[], 'hello']);
+  assert.deepEqual(completeCommand('/nope'), [[], '/nope']);
+});
+
+test('commandList includes every command with a description', () => {
+  const text = commandList();
+  for (const c of ['/model', '/clear', '/help', '/exit']) assert.match(text, new RegExp(c.replace('/', '\\/')));
 });

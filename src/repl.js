@@ -21,8 +21,26 @@ import {
   dim,
 } from './ui.js';
 
+const COMMANDS = [
+  ['/model', 'select models (order = fallback priority)'],
+  ['/clear', 'reset conversation'],
+  ['/help', 'show this help'],
+  ['/exit', 'quit'],
+];
+
+/** readline completer: Tab after "/" completes among the slash commands. */
+export function completeCommand(line) {
+  if (!line.startsWith('/')) return [[], line];
+  const hits = COMMANDS.map(([c]) => c).filter((c) => c.startsWith(line));
+  return [hits, line];
+}
+
+export function commandList() {
+  return COMMANDS.map(([c, d]) => `${c.padEnd(7)} ${d}`).join('\n');
+}
+
 export async function startRepl({ client, models, initialChain, saveModels }) {
-  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout, completer: completeCommand });
 
   // readline intercepts Ctrl+C and emits SIGINT on the interface; without this
   // listener the process can never be interrupted (it just pauses stdin).
@@ -136,8 +154,8 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
     if (!input) continue;
 
     if (input === '/exit') break;
-    if (input === '/help') {
-      console.log('/model  select models (order = fallback priority)\n/clear  reset conversation\n/help   this help\n/exit   quit');
+    if (input === '/' || input === '/help') {
+      console.log(commandList());
       continue;
     }
     if (input === '/clear') {
