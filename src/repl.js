@@ -38,9 +38,12 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
 
   /** Multi-select picker with live status. Returns the (possibly unchanged) chain. */
   async function pickModels(currentChain) {
-    spinner.start('checking model status...');
-    const status = await fetchModelStatus(models.map((m) => m.id)).catch(() => new Map());
-    spinner.stop();
+    let status = new Map();
+    if (interactiveEnabled) {
+      spinner.start('checking model status...');
+      status = await fetchModelStatus(models.map((m) => m.id)).catch(() => new Map());
+      spinner.stop();
+    }
 
     const options = models.map((m) => ({
       label: m.id,
@@ -128,8 +131,11 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
       continue;
     }
     if (input === '/model') {
-      chain = await pickModels(chain);
-      saveModels(chain);
+      const next = await pickModels(chain);
+      if (next !== chain) {
+        chain = next;
+        saveModels(chain);
+      }
       console.log(`(model: ${chainLabel()})`);
       continue;
     }
