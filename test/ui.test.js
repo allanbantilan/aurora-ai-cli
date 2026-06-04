@@ -5,7 +5,7 @@ import { PassThrough } from 'node:stream';
 import readlinePromises from 'node:readline/promises';
 import { promptLabel, createSpinner } from '../src/ui.js';
 import { CodeHighlighter } from '../src/ui.js';
-import { menuReduce, selectMenu, multiMenuReduce, formatModelStatus, statusLine } from '../src/ui.js';
+import { menuReduce, selectMenu, multiMenuReduce, formatModelStatus, statusLine, modelCategory } from '../src/ui.js';
 
 test('promptLabel shows the cwd folder name', () => {
   const label = promptLabel(path.join('C:', 'projects', 'my-app'));
@@ -185,4 +185,17 @@ test('statusLine with an empty chain says no model', () => {
   const line = statusLine('/home/x', []);
   assert.match(line, /no model/);
   assert.doesNotMatch(line, /fallback/);
+});
+
+test('modelCategory buckets coder-ish ids as Coding, rest as General', () => {
+  const cases = [
+    ['qwen/qwen3-coder:free', 'Coding'],
+    ['deepseek/deepseek-chat-v3:free', 'Coding'],
+    ['mistralai/devstral-small:free', 'Coding'],
+    ['mistralai/codestral-2501', 'Coding'],
+    ['meta-llama/llama-3.3-70b-instruct:free', 'General'],
+    ['google/gemma-3-27b-it:free', 'General'],
+    ['some/brand-new-model', 'General'], // unknown ids never vanish — default bucket
+  ];
+  for (const [id, want] of cases) assert.equal(modelCategory(id), want, id);
 });

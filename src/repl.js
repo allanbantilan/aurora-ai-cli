@@ -13,6 +13,7 @@ import {
   multiSelectMenu,
   formatModelStatus,
   shortModelName,
+  modelCategory,
   interactiveEnabled,
   yellow,
   magenta,
@@ -46,9 +47,16 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
       spinner.stop();
     }
 
-    const options = models.map((m) => ({
+    const sorted = [...models].sort((a, b) => {
+      const ca = modelCategory(a.id);
+      const cb = modelCategory(b.id);
+      return ca === cb ? 0 : ca === 'Coding' ? -1 : 1;
+    });
+
+    const options = sorted.map((m) => ({
       label: m.id,
       value: m.id,
+      section: modelCategory(m.id),
       statusText: formatModelStatus(status.get(m.id)),
     }));
 
@@ -69,14 +77,10 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
     }
 
     const preChecked = currentChain
-      .map((id) => models.findIndex((m) => m.id === id))
+      .map((id) => sorted.findIndex((m) => m.id === id))
       .filter((i) => i >= 0);
-    const values = await multiSelectMenu(
-      rl,
-      'Select models — Space toggle, Enter confirm (check order = fallback priority):',
-      options,
-      preChecked
-    );
+    const values = await multiSelectMenu(rl, 'Select models (fallback order = check order):', options, preChecked);
+    if (values === null) console.log(dim('cancelled'));
     return values ?? (currentChain.length ? currentChain : [options[0].value]);
   }
 
@@ -147,7 +151,7 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
         chain = next;
         saveModels(chain);
       }
-      console.log(`(model: ${chainLabel()})`);
+      console.log(dim(`model chain: ${chain.map(shortModelName).join(' → ')}`));
       continue;
     }
     if (input.startsWith('/')) {

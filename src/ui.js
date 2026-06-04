@@ -238,6 +238,11 @@ export function shortModelName(id) {
   return String(id).split('/').pop().replace(':free', '');
 }
 
+/** Advisory UI grouping only — affects picker layout, never behavior. */
+export function modelCategory(id) {
+  return /coder|codestral|deepseek|devstral|code/i.test(id) ? 'Coding' : 'General';
+}
+
 /** Render a {uptime, ok}|null health record as a colored status label. */
 export function formatModelStatus(health) {
   if (!health) return dim('○ no data');
@@ -251,7 +256,7 @@ export function formatModelStatus(health) {
 
 /**
  * Checkbox menu: Space/digits toggle, Enter confirms (>=1 required), Esc cancels.
- * options: [{label, value, statusText?}]; preChecked: ordered indices.
+ * options: [{label, value, statusText?, section?}]; preChecked: ordered indices.
  * Resolves the checked VALUES in check order, or null when cancelled.
  */
 export function multiSelectMenu(rl, title, options, preChecked = []) {
@@ -263,19 +268,33 @@ export function multiSelectMenu(rl, title, options, preChecked = []) {
       done: false,
       cancelled: false,
     };
+    let lastLines = 0;
 
     const render = (redraw) => {
-      if (redraw) process.stdout.write(`${ESC}[${options.length + 2}A`);
+      if (redraw) process.stdout.write(`${ESC}[${lastLines}A`);
       let out = `${ESC}[0J${title}\n`;
+      let lines = 1;
+      let section;
       options.forEach((o, i) => {
+        if (o.section && o.section !== section) {
+          section = o.section;
+          out += `${forceDim(`─ ${section} ─`)}\n`;
+          lines += 1;
+        }
         const box = state.checked.includes(i) ? '◉' : '○';
         const row = `${i === state.index ? '❯' : ' '} ${box} ${i + 1}. ${o.label}  ${o.statusText ?? ''}`;
         out += `${i === state.index ? forceCyan(row) : row}\n`;
+        lines += 1;
       });
       const order = state.checked.map((i) => shortModelName(options[i].value)).join(' → ');
       out += `${forceDim(`${state.checked.length} selected${order ? ` — fallback order: ${order}` : ''}`)}\n`;
+      out += `${forceDim('↑↓ move · space select · enter save · esc cancel')}\n`;
+      lines += 2;
+      lastLines = lines;
       process.stdout.write(out);
     };
+
+    const erase = () => process.stdout.write(`${ESC}[${lastLines}A${ESC}[0J`);
 
     const release = withRawKeys(rl, (str, key = {}) => {
       if (key.ctrl && key.name === 'c') {
@@ -288,6 +307,7 @@ export function multiSelectMenu(rl, title, options, preChecked = []) {
       state = next;
       if (state.done) {
         release();
+        erase();
         resolve(state.cancelled ? null : state.checked.map((i) => options[i].value));
       } else {
         render(true);
