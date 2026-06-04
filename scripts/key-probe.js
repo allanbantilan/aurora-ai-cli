@@ -1,29 +1,26 @@
 #!/usr/bin/env node
-// Diagnostic probe: reproduces aurora's exact permission-menu setup and logs
-// raw-mode state plus every keypress the menu receives. Run it in the same
-// terminal where the arrows fail, press Up/Down a few times, then Enter.
+// Diagnostic probe v2: replicates the menus' exact raw-keypress takeover and
+// prints every keypress event as the menu would receive it.
+// Run it, press: Up, Down, Enter, then q to quit.
 import readline from 'node:readline/promises';
-import { selectMenu } from '../src/ui.js';
+import rlmod from 'node:readline';
 
 const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-rl.on('SIGINT', () => process.exit(0));
+const stdin = process.stdin;
 
-console.log(
-  `before menu: isTTY=${process.stdin.isTTY} isRaw=${process.stdin.isRaw} ` +
-    `WT_SESSION=${Boolean(process.env.WT_SESSION)} TERM_PROGRAM=${process.env.TERM_PROGRAM ?? ''}`
-);
+console.log(`isTTY=${stdin.isTTY} isRaw=${stdin.isRaw} WT_SESSION=${Boolean(process.env.WT_SESSION)}`);
 
-// side-channel key log (intentionally noisy — it will interleave with the menu)
-process.stdin.on('keypress', (str, key) => {
-  process.stdout.write(`  [key] name=${key?.name} seq=${JSON.stringify(key?.sequence)}\n`);
+// exact withRawKeys sequence from src/ui.js
+rl.pause();
+stdin.listeners('keypress').forEach((l) => stdin.removeListener('keypress', l));
+rlmod.emitKeypressEvents(stdin);
+if (stdin.isTTY) stdin.setRawMode(true);
+stdin.resume();
+
+console.log('press: Up, Down, Enter, Esc — then q to quit. Every key prints below:');
+stdin.on('keypress', (str, key = {}) => {
+  console.log(
+    `[key] name=${String(key.name)} seq=${JSON.stringify(key.sequence)} ctrl=${Boolean(key.ctrl)} meta=${Boolean(key.meta)}`
+  );
+  if (key.sequence === 'q' || (key.ctrl && key.name === 'c')) process.exit(0);
 });
-
-const v = await selectMenu(rl, 'Probe menu — press Down, Down, Up, then Enter:', [
-  { label: 'first', value: 'first' },
-  { label: 'second', value: 'second' },
-  { label: 'third', value: 'third' },
-]);
-
-console.log(`resolved=${v} (Down,Down,Up,Enter should resolve "second")`);
-console.log(`after menu: isRaw=${process.stdin.isRaw}`);
-rl.close();
