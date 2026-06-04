@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-import readline from 'node:readline/promises';
 import { loadConfig, saveConfig, getApiKey, migrateConfig } from '../src/config.js';
 import { createClient, fetchFreeToolModels } from '../src/client.js';
+import { promptSecret } from '../src/secret.js';
 import { startRepl } from '../src/repl.js';
 
 const config = loadConfig();
@@ -9,15 +9,18 @@ if (migrateConfig(config)) saveConfig(config);
 
 let apiKey = getApiKey(config);
 if (!apiKey) {
-  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-  apiKey = (await rl.question('Paste your OpenRouter API key (saved to ~/.aurora/config.json): ')).trim();
-  rl.close();
+  apiKey = (await promptSecret('Paste your OpenRouter API key (saved to ~/.aurora/config.json): ')).trim();
   if (!apiKey) {
     console.error('An API key is required. Get one at https://openrouter.ai/keys');
     process.exit(1);
   }
+  if (!getApiKey({ apiKey })) {
+    console.error('OpenRouter API keys must start with sk-. Get one at https://openrouter.ai/keys');
+    process.exit(1);
+  }
   config.apiKey = apiKey;
   saveConfig(config);
+  console.log('Saved OpenRouter API key to ~/.aurora/config.json.');
 }
 
 const savedChain = Array.isArray(config.lastModels) ? config.lastModels : [];

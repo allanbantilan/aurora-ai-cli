@@ -236,6 +236,94 @@ test('does not fall back on non-availability errors', async () => {
   assert.equal(switched, false);
 });
 
+function hangingStream(firstChunks) {
+  return {
+    async *[Symbol.asyncIterator]() {
+      for (const c of firstChunks) yield c;
+      await new Promise(() => {}); // hang forever
+    },
+  };
+}
+
+test('reasoning deltas fire onReasoning and do not end up in content', async () => {
+  const client = fakeClient([[chunk({ reasoning: 'hmm, ' }), chunk({ reasoning: 'let me think' }), chunk({ content: 'answer' })]]);
+  const messages = [{ role: 'user', content: 'hi' }];
+  let reasoning = '';
+  await runTurn({
+    client,
+    models: ['m'],
+    messages,
+    tools: fakeTools(async () => 'unused'),
+    permissions: allowAll,
+    onReasoning: (t) => (reasoning += t),
+  });
+  assert.equal(reasoning, 'hmm, let me think');
+  assert.equal(messages.at(-1).content, 'answer');
+});
+
+test('stalled stream falls back to the next model', async () => {
+  const switches = [];
+  const client = modelClient({
+    'a/stuck': () => hangingStream([chunk({ reasoning: 'thinking' })]),
+    'b/solid': () => textStream('answer'),
+  });
+  const messages = [{ role: 'user', content: 'hi' }];
+  await runTurn({
+    client,
+    models: ['a/stuck', 'b/solid'],
+    messages,
+    tools: fakeTools(async () => 'unused'),
+    permissions: allowAll,
+    retryDelayMs: 0,
+    stallMs: 20,
+    onModelSwitch: (from, to) => switches.push([from, to]),
+  });
+  assert.deepEqual(switches, [['a/stuck', 'b/solid']]);
+  assert.equal(messages.at(-1).content, 'answer');
+});
+
+test('stall after visible content propagates instead of falling back', async () => {
+  const client = modelClient({
+    'a/stuck': () => hangingStream([chunk({ content: 'partial' })]),
+    'b/solid': () => textStream('never'),
+  });
+  let switched = false;
+  await assert.rejects(
+    runTurn({
+      client,
+      models: ['a/stuck', 'b/solid'],
+      messages: [{ role: 'user', content: 'hi' }],
+      tools: fakeTools(async () => 'unused'),
+      permissions: allowAll,
+      retryDelayMs: 0,
+      stallMs: 20,
+      onModelSwitch: () => { switched = true; },
+    }),
+    /no response/
+  );
+  assert.equal(switched, false);
+});
+
+test('deltas arriving within the stall window keep the stream alive', async () => {
+  const client = fakeClient([
+    [
+      chunk({ reasoning: 'a' }),
+      chunk({ reasoning: 'b' }),
+      chunk({ content: 'slow but steady' }),
+    ],
+  ]);
+  const messages = [{ role: 'user', content: 'hi' }];
+  await runTurn({
+    client,
+    models: ['m'],
+    messages,
+    tools: fakeTools(async () => 'unused'),
+    permissions: allowAll,
+    stallMs: 5000,
+  });
+  assert.equal(messages.at(-1).content, 'slow but steady');
+});
+
 test('does not fall back after partial content has streamed', async () => {
   const client = modelClient({
     'a/m': () => ({

@@ -1,5 +1,7 @@
 import path from 'node:path';
+import fs from 'node:fs';
 import readline from 'node:readline';
+import { previewTool } from './tools/index.js';
 
 export const colorEnabled = Boolean(process.stdout.isTTY) && !process.env.NO_COLOR;
 export const interactiveEnabled = Boolean(process.stdin.isTTY && process.stdout.isTTY);
@@ -27,8 +29,21 @@ export function promptLabel(cwd = process.cwd()) {
   return `${cyan(path.basename(cwd))} > `;
 }
 
+// legacy conhost often lacks Unicode glyphs; Windows Terminal/VS Code set env markers
+export const legacyConhost =
+  process.platform === 'win32' && !process.env.WT_SESSION && !process.env.TERM_PROGRAM;
+
+/** Dim one-line status: full cwd · active model (+N fallbacks). */
+export function statusLine(cwd, chain) {
+  const extra = chain.length > 1 ? ` (+${chain.length - 1} fallback${chain.length > 2 ? 's' : ''})` : '';
+  return dim(`${cwd} ${legacyConhost ? '|' : '·'} ${chain[0] ?? 'no model'}${extra}`);
+}
+
 const FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 const ASCII_FRAMES = ['-', '\\', '|', '/'];
+
+/** Text may be a string or a function re-evaluated on every render (for time-driven content). */
+const renderText = (t) => (typeof t === 'function' ? t() : t);
 
 /** Animated one-line spinner. Falls back to a static line on non-TTY stdout. */
 export function createSpinner() {
@@ -37,12 +52,12 @@ export function createSpinner() {
     return {
       start(text) {
         if (!shown) {
-          console.log(text);
+          console.log(renderText(text));
           shown = true;
         }
       },
       update(text) {
-        console.log(text);
+        console.log(renderText(text));
       },
       stop() {
         shown = false;
@@ -50,17 +65,13 @@ export function createSpinner() {
     };
   }
 
-  // legacy conhost often lacks braille glyphs; Windows Terminal/VS Code set env markers
-  const frames =
-    process.platform === 'win32' && !process.env.WT_SESSION && !process.env.TERM_PROGRAM
-      ? ASCII_FRAMES
-      : FRAMES;
+  const frames = legacyConhost ? ASCII_FRAMES : FRAMES;
 
   let timer = null;
   let text = '';
   let i = 0;
   const draw = () =>
-    process.stdout.write(`\r${ESC}[2K${cyan(frames[i++ % frames.length])} ${dim(text)}`);
+    process.stdout.write(`\r${ESC}[2K${cyan(frames[i++ % frames.length])} ${dim(renderText(text))}`);
 
   return {
     start(t) {
@@ -95,6 +106,7 @@ export class CodeHighlighter {
     this.enabled = enabled;
     this.buffer = '';
     this.inFence = false;
+    this.prevBlank = true; // tracks whether the last emitted line was blank
   }
 
   highlight(chunk) {
@@ -123,12 +135,67 @@ export class CodeHighlighter {
       if (!this.inFence) {
         this.inFence = true;
         const lang = line.trim().slice(3).trim();
-        return forceDim(`╭── ${lang ? `${lang} ` : ''}${'─'.repeat(6)}`);
+        // pad with a blank line so code blocks don't butt up against prose
+        const pad = this.prevBlank ? '' : '\n';
+        this.prevBlank = false;
+        return pad + forceDim(`╭── ${lang ? `${lang} ` : ''}${'─'.repeat(6)}`);
       }
       this.inFence = false;
-      return forceDim(`╰${'─'.repeat(9)}`);
+      this.prevBlank = true; // the appended newline leaves a blank line after the block
+      return forceDim(`╰${'─'.repeat(9)}`) + '\n';
     }
+    if (!this.inFence) this.prevBlank = line.trim() === '';
     return this.inFence ? forceDim('│ ') + forceYellow(line) : line;
+  }
+}
+
+const PREVIEW_MAX_CHARS = 8_000;
+const clipPreview = (t) =>
+  t.length > PREVIEW_MAX_CHARS ? `${t.slice(0, PREVIEW_MAX_CHARS)}\n...[truncated]` : t;
+
+/** Best-effort 1-based line number where `snippet` starts inside the file at `filePath`. */
+function startLineOf(filePath, snippet) {
+  try {
+    const text = fs.readFileSync(filePath, 'utf8');
+    const i = text.indexOf(snippet);
+    return i < 0 ? 1 : text.slice(0, i).split('\n').length;
+  } catch {
+    return 1;
+  }
+}
+
+/**
+ * Styled permission preview: file changes render as bordered, line-numbered
+ * code blocks so they stand apart from prose. Falls back to the plain
+ * previewTool text when colors are off (non-TTY / NO_COLOR).
+ */
+export function formatToolPreview(name, args, { colors = colorEnabled } = {}) {
+  if (!colors) return previewTool(name, args);
+
+  const block = (label, body, startLine = 1) => {
+    const lines = clipPreview(String(body ?? '')).split('\n');
+    const width = String(startLine + lines.length - 1).length;
+    return [
+      forceDim(`╭── ${label} ${'─'.repeat(6)}`),
+      ...lines.map((l, i) => forceDim(`│ ${String(startLine + i).padStart(width)} `) + forceYellow(l)),
+      forceDim(`╰${'─'.repeat(9)}`),
+    ].join('\n');
+  };
+
+  switch (name) {
+    case 'write_file':
+      return `${forceCyan('[write_file]')} ${args.path}\n${block(args.path, args.content)}`;
+    case 'edit_file': {
+      const line = startLineOf(args.path, args.old_string ?? '');
+      return (
+        `${forceCyan('[edit_file]')} ${args.path}\n` +
+        `${block('remove', args.old_string, line)}\n${block('insert', args.new_string, line)}`
+      );
+    }
+    case 'run_command':
+      return `${forceCyan('[run_command]')} ${forceYellow(String(args.command ?? ''))}`;
+    default:
+      return previewTool(name, args);
   }
 }
 
@@ -158,12 +225,25 @@ function withRawKeys(rl, onKey) {
   const prevKeypress = stdin.listeners('keypress');
   prevKeypress.forEach((l) => stdin.removeListener('keypress', l));
   readline.emitKeypressEvents(stdin);
+  const wasRaw = stdin.isRaw === true;
   if (stdin.isTTY) stdin.setRawMode(true);
   stdin.resume();
-  stdin.on('keypress', onKey);
+  process.stdout.write(`${ESC}[?25l`); // hide the cursor — it parks confusingly below the menu
+  // AURORA_DEBUG_KEYS=1 logs every keypress as the menu receives it (diagnostics)
+  const handler = process.env.AURORA_DEBUG_KEYS
+    ? (str, key) => {
+        process.stdout.write(`[key] name=${String(key?.name)} seq=${JSON.stringify(key?.sequence)}\n`);
+        onKey(str, key);
+      }
+    : onKey;
+  stdin.on('keypress', handler);
   return () => {
-    stdin.removeListener('keypress', onKey);
-    if (stdin.isTTY) stdin.setRawMode(false);
+    stdin.removeListener('keypress', handler);
+    process.stdout.write(`${ESC}[?25h`);
+    // restore the PREVIOUS raw-mode state — terminal-mode readline keeps the
+    // tty raw; dropping to cooked here makes the console re-echo every later
+    // input line (doubled input on Windows)
+    if (stdin.isTTY) stdin.setRawMode(wasRaw);
     prevKeypress.forEach((l) => stdin.on('keypress', l));
     rl.resume();
   };
@@ -200,6 +280,8 @@ export function selectMenu(rl, title, options) {
       state = next;
       if (state.done) {
         release();
+        // erase the menu block — the caller prints a one-line record instead
+        process.stdout.write(`${ESC}[${options.length + 1}A${ESC}[0J`);
         resolve(options[state.escaped ? escIndex : state.index].value);
       } else {
         render(true);
@@ -232,6 +314,11 @@ export function shortModelName(id) {
   return String(id).split('/').pop().replace(':free', '');
 }
 
+/** Advisory UI grouping only — affects picker layout, never behavior. */
+export function modelCategory(id) {
+  return /coder|codestral|deepseek|devstral|code/i.test(id) ? 'Coding' : 'General';
+}
+
 /** Render a {uptime, ok}|null health record as a colored status label. */
 export function formatModelStatus(health) {
   if (!health) return dim('○ no data');
@@ -245,7 +332,7 @@ export function formatModelStatus(health) {
 
 /**
  * Checkbox menu: Space/digits toggle, Enter confirms (>=1 required), Esc cancels.
- * options: [{label, value, statusText?}]; preChecked: ordered indices.
+ * options: [{label, value, statusText?, section?}]; preChecked: ordered indices.
  * Resolves the checked VALUES in check order, or null when cancelled.
  */
 export function multiSelectMenu(rl, title, options, preChecked = []) {
@@ -257,19 +344,33 @@ export function multiSelectMenu(rl, title, options, preChecked = []) {
       done: false,
       cancelled: false,
     };
+    let lastLines = 0;
 
     const render = (redraw) => {
-      if (redraw) process.stdout.write(`${ESC}[${options.length + 2}A`);
+      if (redraw) process.stdout.write(`${ESC}[${lastLines}A`);
       let out = `${ESC}[0J${title}\n`;
+      let lines = 1;
+      let section;
       options.forEach((o, i) => {
+        if (o.section && o.section !== section) {
+          section = o.section;
+          out += `${forceDim(`─ ${section} ─`)}\n`;
+          lines += 1;
+        }
         const box = state.checked.includes(i) ? '◉' : '○';
         const row = `${i === state.index ? '❯' : ' '} ${box} ${i + 1}. ${o.label}  ${o.statusText ?? ''}`;
         out += `${i === state.index ? forceCyan(row) : row}\n`;
+        lines += 1;
       });
       const order = state.checked.map((i) => shortModelName(options[i].value)).join(' → ');
       out += `${forceDim(`${state.checked.length} selected${order ? ` — fallback order: ${order}` : ''}`)}\n`;
+      out += `${forceDim('↑↓ move · space select · enter save · esc cancel')}\n`;
+      lines += 2;
+      lastLines = lines;
       process.stdout.write(out);
     };
+
+    const erase = () => process.stdout.write(`${ESC}[${lastLines}A${ESC}[0J`);
 
     const release = withRawKeys(rl, (str, key = {}) => {
       if (key.ctrl && key.name === 'c') {
@@ -282,6 +383,7 @@ export function multiSelectMenu(rl, title, options, preChecked = []) {
       state = next;
       if (state.done) {
         release();
+        erase();
         resolve(state.cancelled ? null : state.checked.map((i) => options[i].value));
       } else {
         render(true);

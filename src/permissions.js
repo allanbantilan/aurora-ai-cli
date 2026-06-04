@@ -1,7 +1,8 @@
-import { RISKY, previewTool } from './tools/index.js';
+import { RISKY } from './tools/index.js';
 
 /**
- * @param {(preview: string) => Promise<{choice: 'yes'|'always'|'no', feedback?: string}>} ask
+ * @param {(toolName: string, args: object) => Promise<{choice: 'yes'|'always'|'no', feedback?: string}>} ask
+ * The asker renders its own preview from (toolName, args).
  * check() resolves to {allowed: boolean, feedback?: string}.
  */
 export function createPermissions(ask) {
@@ -10,7 +11,7 @@ export function createPermissions(ask) {
     async check(toolName, args) {
       if (!RISKY.has(toolName)) return { allowed: true };
       if (alwaysAllowed.has(toolName)) return { allowed: true };
-      const answer = (await ask(previewTool(toolName, args))) ?? {};
+      const answer = (await ask(toolName, args)) ?? {};
       if (answer.choice === 'always') {
         alwaysAllowed.add(toolName);
         return { allowed: true };
