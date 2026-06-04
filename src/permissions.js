@@ -1,20 +1,22 @@
 import { RISKY, previewTool } from './tools/index.js';
 
 /**
- * @param {(preview: string) => Promise<string>} ask - shows the preview, returns 'y' | 'a' | 'n' (anything else = deny)
+ * @param {(preview: string) => Promise<{choice: 'yes'|'always'|'no', feedback?: string}>} ask
+ * check() resolves to {allowed: boolean, feedback?: string}.
  */
 export function createPermissions(ask) {
   const alwaysAllowed = new Set();
   return {
     async check(toolName, args) {
-      if (!RISKY.has(toolName)) return true;
-      if (alwaysAllowed.has(toolName)) return true;
-      const answer = (await ask(previewTool(toolName, args))).trim().toLowerCase();
-      if (answer === 'a') {
+      if (!RISKY.has(toolName)) return { allowed: true };
+      if (alwaysAllowed.has(toolName)) return { allowed: true };
+      const answer = (await ask(previewTool(toolName, args))) ?? {};
+      if (answer.choice === 'always') {
         alwaysAllowed.add(toolName);
-        return true;
+        return { allowed: true };
       }
-      return answer === 'y';
+      if (answer.choice === 'yes') return { allowed: true };
+      return { allowed: false, ...(answer.feedback ? { feedback: answer.feedback } : {}) };
     },
   };
 }
