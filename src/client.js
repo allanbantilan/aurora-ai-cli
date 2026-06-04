@@ -3,7 +3,9 @@ import OpenAI from 'openai';
 const BASE_URL = 'https://openrouter.ai/api/v1';
 
 export function createClient(apiKey) {
-  return new OpenAI({ apiKey, baseURL: BASE_URL });
+  // maxRetries: 0 — withRetry below is the only retry layer; the SDK's silent
+  // internal retries would otherwise multiply the wait with no user feedback.
+  return new OpenAI({ apiKey, baseURL: BASE_URL, maxRetries: 0 });
 }
 
 /** Keep models that are free (prompt + completion price 0) and support native tool calling. */
@@ -25,14 +27,16 @@ export async function fetchFreeToolModels() {
   return filterFreeToolModels(data);
 }
 
-/** Retry fn on HTTP 429 with linear backoff. */
-export async function withRetry(fn, retries = 2, baseDelayMs = 2000) {
+/** Retry fn on HTTP 429 with linear backoff. onRetry(attempt, retries, delayMs) is called before each wait. */
+export async function withRetry(fn, retries = 2, baseDelayMs = 2000, onRetry) {
   for (let attempt = 0; ; attempt++) {
     try {
       return await fn();
     } catch (err) {
       if (err.status === 429 && attempt < retries) {
-        await new Promise((r) => setTimeout(r, baseDelayMs * (attempt + 1)));
+        const delayMs = baseDelayMs * (attempt + 1);
+        onRetry?.(attempt + 1, retries, delayMs);
+        await new Promise((r) => setTimeout(r, delayMs));
         continue;
       }
       throw err;

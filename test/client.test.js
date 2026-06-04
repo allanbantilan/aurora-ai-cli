@@ -69,3 +69,20 @@ test('withRetry does not retry non-429 errors', async () => {
   );
   assert.equal(calls, 1);
 });
+
+test('createClient disables SDK-internal retries', async () => {
+  const { createClient } = await import('../src/client.js');
+  assert.equal(createClient('test-key').maxRetries, 0);
+});
+
+test('withRetry reports each retry via onRetry callback', async () => {
+  const reported = [];
+  let calls = 0;
+  const result = await withRetry(async () => {
+    calls++;
+    if (calls < 3) throw Object.assign(new Error('rate limited'), { status: 429 });
+    return 'ok';
+  }, 2, 0, (attempt, retries, delayMs) => reported.push([attempt, retries, delayMs]));
+  assert.equal(result, 'ok');
+  assert.deepEqual(reported, [[1, 2, 0], [2, 2, 0]]);
+});

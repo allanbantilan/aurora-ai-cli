@@ -6,9 +6,9 @@ const MAX_ITERATIONS = 15;
  * Run one user turn: stream completions, execute tool calls, loop until the
  * model answers with plain text. Mutates `messages` in place.
  */
-export async function runTurn({ client, model, messages, tools, permissions, onText, onToolStart }) {
+export async function runTurn({ client, model, messages, tools, permissions, onText, onToolStart, onRetry }) {
   for (let i = 0; i < MAX_ITERATIONS; i++) {
-    const { content, toolCalls } = await streamCompletion(client, model, messages, tools.definitions, onText);
+    const { content, toolCalls } = await streamCompletion(client, model, messages, tools.definitions, onText, onRetry);
 
     const assistantMsg = { role: 'assistant', content: content || null };
     if (toolCalls.length) assistantMsg.tool_calls = toolCalls;
@@ -37,9 +37,12 @@ export async function runTurn({ client, model, messages, tools, permissions, onT
 }
 
 /** Stream one completion, accumulating text and tool-call deltas. */
-async function streamCompletion(client, model, messages, definitions, onText) {
-  const stream = await withRetry(() =>
-    client.chat.completions.create({ model, messages, tools: definitions, stream: true })
+async function streamCompletion(client, model, messages, definitions, onText, onRetry) {
+  const stream = await withRetry(
+    () => client.chat.completions.create({ model, messages, tools: definitions, stream: true }),
+    2,
+    2000,
+    onRetry
   );
 
   let content = '';
