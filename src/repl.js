@@ -149,6 +149,7 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
     const writeModelText = createEchoSuppressor(input, (t) => {
       process.stdout.write(highlighter.highlight(t));
     });
+    let reasoningStarted = 0;
     spinner.start('thinking...');
     try {
       await runTurn({
@@ -161,7 +162,12 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
           spinner.stop();
           writeModelText(t);
         },
+        onReasoning: () => {
+          if (!reasoningStarted) reasoningStarted = Date.now();
+          spinner.update(`reasoning... (${Math.round((Date.now() - reasoningStarted) / 1000)}s)`);
+        },
         onToolStart: (name, args) => {
+          reasoningStarted = 0;
           spinner.stop();
           console.log(`\n${magenta(`[tool] ${name}`)} ${dim(JSON.stringify(args).slice(0, 160))}`);
           spinner.start('thinking...');
