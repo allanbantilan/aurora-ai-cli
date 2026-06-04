@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { filterFreeToolModels, withRetry } from '../src/client.js';
+import { filterFreeToolModels, withRetry, fetchModelStatus } from '../src/client.js';
 
 const fixture = [
   {
@@ -85,4 +85,50 @@ test('withRetry reports each retry via onRetry callback', async () => {
   }, 2, 0, (attempt, retries, delayMs) => reported.push([attempt, retries, delayMs]));
   assert.equal(result, 'ok');
   assert.deepEqual(reported, [[1, 2, 0], [2, 2, 0]]);
+});
+
+function stubFetch(routes) {
+  // routes: url-substring -> () => Response-like | throws
+  return async (url) => {
+    for (const [needle, handler] of Object.entries(routes)) {
+      if (url.includes(needle)) return handler();
+    }
+    throw new Error(`no route for ${url}`);
+  };
+}
+
+const ok = (endpoints) => ({ ok: true, json: async () => ({ data: { endpoints } }) });
+
+test('fetchModelStatus picks max uptime among live endpoints', async () => {
+  const fetchFn = stubFetch({
+    'a/model-a': () => ok([
+      { status: 0, uptime_last_30m: 91.2 },
+      { status: -1, uptime_last_30m: 99.9 }, // not live: ignored
+      { status: 0, uptime_last_30m: 75.0 },
+    ]),
+  });
+  const map = await fetchModelStatus(['a/model-a'], fetchFn);
+  assert.deepEqual(map.get('a/model-a'), { uptime: 91.2, ok: true });
+});
+
+test('fetchModelStatus reports ok=false when no live endpoints', async () => {
+  const fetchFn = stubFetch({
+    'b/model-b': () => ok([{ status: -3, uptime_last_30m: 50 }]),
+    'c/model-c': () => ok([]),
+  });
+  const map = await fetchModelStatus(['b/model-b', 'c/model-c'], fetchFn);
+  assert.deepEqual(map.get('b/model-b'), { uptime: null, ok: false });
+  assert.deepEqual(map.get('c/model-c'), { uptime: null, ok: false });
+});
+
+test('fetchModelStatus maps failures to null without rejecting', async () => {
+  const fetchFn = stubFetch({
+    'd/model-d': () => { throw new Error('boom'); },
+    'e/model-e': () => ({ ok: false, status: 500 }),
+    'f/model-f': () => ok([{ status: 0, uptime_last_30m: null }]),
+  });
+  const map = await fetchModelStatus(['d/model-d', 'e/model-e', 'f/model-f'], fetchFn);
+  assert.equal(map.get('d/model-d'), null);
+  assert.equal(map.get('e/model-e'), null);
+  assert.deepEqual(map.get('f/model-f'), { uptime: null, ok: true }); // live but no uptime data
 });
