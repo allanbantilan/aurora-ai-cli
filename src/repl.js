@@ -150,6 +150,7 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
       process.stdout.write(highlighter.highlight(t));
     });
     let reasoningStarted = 0;
+    let reasoningSeconds = -1;
     spinner.start('thinking...');
     try {
       await runTurn({
@@ -164,10 +165,16 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
         },
         onReasoning: () => {
           if (!reasoningStarted) reasoningStarted = Date.now();
-          spinner.update(`reasoning... (${Math.round((Date.now() - reasoningStarted) / 1000)}s)`);
+          // throttle to one update per elapsed second — reasoning deltas can
+          // arrive hundreds of times per response (non-TTY prints each update)
+          const s = Math.round((Date.now() - reasoningStarted) / 1000);
+          if (s === reasoningSeconds) return;
+          reasoningSeconds = s;
+          spinner.update(`reasoning... (${s}s)`);
         },
         onToolStart: (name, args) => {
           reasoningStarted = 0;
+          reasoningSeconds = -1;
           spinner.stop();
           console.log(`\n${magenta(`[tool] ${name}`)} ${dim(JSON.stringify(args).slice(0, 160))}`);
           spinner.start('thinking...');
