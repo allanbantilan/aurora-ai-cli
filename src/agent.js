@@ -5,10 +5,48 @@ const MAX_ITERATIONS = 15;
 /**
  * Run one user turn: stream completions, execute tool calls, loop until the
  * model answers with plain text. Mutates `messages` in place.
+ * `models` is an ordered fallback chain; on availability errors (429/5xx)
+ * before any content has streamed, the next model is tried and
+ * onModelSwitch(failed, next) fires. Other errors propagate immediately.
  */
-export async function runTurn({ client, model, messages, tools, permissions, onText, onToolStart, onRetry }) {
+export async function runTurn({
+  client,
+  models,
+  messages,
+  tools,
+  permissions,
+  onText,
+  onToolStart,
+  onRetry,
+  onModelSwitch,
+  retryDelayMs = 2000,
+}) {
+  let activeIndex = 0;
+
+  const complete = async () => {
+    for (;;) {
+      let streamedAnything = false;
+      const tappedOnText = (t) => {
+        streamedAnything = true;
+        onText?.(t);
+      };
+      try {
+        return await streamCompletion(
+          client, models[activeIndex], messages, tools.definitions, tappedOnText, onRetry, retryDelayMs
+        );
+      } catch (err) {
+        const availability = err.status === 429 || err.status >= 500;
+        const canFallback = availability && !streamedAnything && activeIndex < models.length - 1;
+        if (!canFallback) throw err;
+        const failed = models[activeIndex];
+        activeIndex += 1;
+        onModelSwitch?.(failed, models[activeIndex]);
+      }
+    }
+  };
+
   for (let i = 0; i < MAX_ITERATIONS; i++) {
-    const { content, toolCalls } = await streamCompletion(client, model, messages, tools.definitions, onText, onRetry);
+    const { content, toolCalls } = await complete();
 
     const assistantMsg = { role: 'assistant', content: content || null };
     if (toolCalls.length) assistantMsg.tool_calls = toolCalls;
@@ -39,11 +77,11 @@ export async function runTurn({ client, model, messages, tools, permissions, onT
 }
 
 /** Stream one completion, accumulating text and tool-call deltas. */
-async function streamCompletion(client, model, messages, definitions, onText, onRetry) {
+async function streamCompletion(client, model, messages, definitions, onText, onRetry, retryDelayMs = 2000) {
   const stream = await withRetry(
     () => client.chat.completions.create({ model, messages, tools: definitions, stream: true }),
     2,
-    2000,
+    retryDelayMs,
     onRetry
   );
 

@@ -51,7 +51,7 @@ test('plain text response ends the turn', async () => {
   let streamed = '';
   await runTurn({
     client,
-    model: 'm',
+    models: ['m'],
     messages,
     tools: fakeTools(async () => 'unused'),
     permissions: allowAll,
@@ -71,7 +71,7 @@ test('tool call is executed and result fed back', async () => {
   const executed = [];
   await runTurn({
     client,
-    model: 'm',
+    models: ['m'],
     messages,
     tools: fakeTools(async (name, args) => {
       executed.push([name, args]);
@@ -95,7 +95,7 @@ test('denied tool call sends denial back to the model', async () => {
   let executed = false;
   await runTurn({
     client,
-    model: 'm',
+    models: ['m'],
     messages,
     tools: fakeTools(async () => {
       executed = true;
@@ -115,7 +115,7 @@ test('malformed tool arguments become an error result, not a crash', async () =>
   const messages = [{ role: 'user', content: 'go' }];
   await runTurn({
     client,
-    model: 'm',
+    models: ['m'],
     messages,
     tools: fakeTools(async () => 'unused'),
     permissions: allowAll,
@@ -131,7 +131,7 @@ test('iteration cap stops a looping model', async () => {
   await assert.rejects(
     runTurn({
       client,
-      model: 'm',
+      models: ['m'],
       messages,
       tools: fakeTools(async () => 'match'),
       permissions: allowAll,
@@ -148,7 +148,7 @@ test('denial feedback is included in the tool result', async () => {
   const messages = [{ role: 'user', content: 'wipe it' }];
   await runTurn({
     client,
-    model: 'm',
+    models: ['m'],
     messages,
     tools: fakeTools(async () => 'unused'),
     permissions: { check: async () => ({ allowed: false, feedback: 'move it to backup/ instead' }) },
@@ -156,4 +156,108 @@ test('denial feedback is included in the tool result', async () => {
   const toolMsg = messages.find((m) => m.role === 'tool');
   assert.match(toolMsg.content, /denied/i);
   assert.match(toolMsg.content, /move it to backup\/ instead/);
+});
+
+/** client whose create() dispatches on the requested model */
+function modelClient(handlers) {
+  return {
+    chat: {
+      completions: {
+        create: async ({ model }) => handlers[model](),
+      },
+    },
+  };
+}
+
+function textStream(text) {
+  return {
+    async *[Symbol.asyncIterator]() {
+      yield chunk({ content: text });
+    },
+  };
+}
+
+test('falls back to the next model on 429 and reports the switch', async () => {
+  const switches = [];
+  const client = modelClient({
+    'a/flaky': () => { throw Object.assign(new Error('rate limited'), { status: 429 }); },
+    'b/solid': () => textStream('answer'),
+  });
+  const messages = [{ role: 'user', content: 'hi' }];
+  await runTurn({
+    client,
+    models: ['a/flaky', 'b/solid'],
+    messages,
+    tools: fakeTools(async () => 'unused'),
+    permissions: allowAll,
+    retryDelayMs: 0,
+    onModelSwitch: (from, to) => switches.push([from, to]),
+  });
+  assert.deepEqual(switches, [['a/flaky', 'b/solid']]);
+  assert.equal(messages.at(-1).content, 'answer');
+});
+
+test('throws when every model in the chain is exhausted', async () => {
+  const client = modelClient({
+    'a/m': () => { throw Object.assign(new Error('rate limited'), { status: 429 }); },
+    'b/m': () => { throw Object.assign(new Error('bad gateway'), { status: 502 }); },
+  });
+  await assert.rejects(
+    runTurn({
+      client,
+      models: ['a/m', 'b/m'],
+      messages: [{ role: 'user', content: 'hi' }],
+      tools: fakeTools(async () => 'unused'),
+      permissions: allowAll,
+      retryDelayMs: 0,
+    }),
+    /bad gateway/ // the LAST availability error propagates
+  );
+});
+
+test('does not fall back on non-availability errors', async () => {
+  let switched = false;
+  const client = modelClient({
+    'a/m': () => { throw Object.assign(new Error('bad request'), { status: 400 }); },
+    'b/m': () => textStream('never'),
+  });
+  await assert.rejects(
+    runTurn({
+      client,
+      models: ['a/m', 'b/m'],
+      messages: [{ role: 'user', content: 'hi' }],
+      tools: fakeTools(async () => 'unused'),
+      permissions: allowAll,
+      retryDelayMs: 0,
+      onModelSwitch: () => { switched = true; },
+    }),
+    /bad request/
+  );
+  assert.equal(switched, false);
+});
+
+test('does not fall back after partial content has streamed', async () => {
+  const client = modelClient({
+    'a/m': () => ({
+      async *[Symbol.asyncIterator]() {
+        yield chunk({ content: 'partial' });
+        throw Object.assign(new Error('connection reset'), { status: 502 });
+      },
+    }),
+    'b/m': () => textStream('never'),
+  });
+  let switched = false;
+  await assert.rejects(
+    runTurn({
+      client,
+      models: ['a/m', 'b/m'],
+      messages: [{ role: 'user', content: 'hi' }],
+      tools: fakeTools(async () => 'unused'),
+      permissions: allowAll,
+      retryDelayMs: 0,
+      onModelSwitch: () => { switched = true; },
+    }),
+    /connection reset/
+  );
+  assert.equal(switched, false); // re-streaming would duplicate visible output
 });
