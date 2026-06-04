@@ -3,11 +3,15 @@ import { runTurn } from './agent.js';
 import * as tools from './tools/index.js';
 import { createPermissions } from './permissions.js';
 import { systemPrompt } from './prompt.js';
+import { fetchModelStatus } from './client.js';
 import {
   promptLabel,
   createSpinner,
   CodeHighlighter,
   selectMenu,
+  multiSelectMenu,
+  formatModelStatus,
+  shortModelName,
   interactiveEnabled,
   yellow,
   magenta,
@@ -15,7 +19,7 @@ import {
   dim,
 } from './ui.js';
 
-export async function startRepl({ client, models, initialModel, saveModel }) {
+export async function startRepl({ client, models, initialChain, saveModels }) {
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
 
   // readline intercepts Ctrl+C and emits SIGINT on the interface; without this
@@ -30,14 +34,55 @@ export async function startRepl({ client, models, initialModel, saveModel }) {
   // crashing on the next rl.question (ERR_USE_AFTER_CLOSE).
   rl.on('close', () => process.exit(0));
 
-  let model = initialModel;
-  if (!model) {
-    model = await pickModel(rl, models, null);
-    saveModel(model);
+  const spinner = createSpinner();
+
+  /** Multi-select picker with live status. Returns the (possibly unchanged) chain. */
+  async function pickModels(currentChain) {
+    spinner.start('checking model status...');
+    const status = await fetchModelStatus(models.map((m) => m.id)).catch(() => new Map());
+    spinner.stop();
+
+    const options = models.map((m) => ({
+      label: m.id,
+      value: m.id,
+      statusText: formatModelStatus(status.get(m.id)),
+    }));
+
+    if (!interactiveEnabled) {
+      console.log('\nFree tool-capable models on OpenRouter:');
+      options.forEach((o, i) => console.log(`${String(i + 1).padStart(3)}. ${o.label}  ${o.statusText}`));
+      const answer = (await rl.question('Models in priority order (e.g. "1 3 2") > ')).trim();
+      const idxs = [
+        ...new Set(
+          answer
+            .split(/\s+/)
+            .map((n) => Number(n) - 1)
+            .filter((i) => Number.isInteger(i) && i >= 0 && i < options.length)
+        ),
+      ];
+      if (idxs.length) return idxs.map((i) => options[i].value);
+      return currentChain.length ? currentChain : [options[0].value];
+    }
+
+    const preChecked = currentChain
+      .map((id) => models.findIndex((m) => m.id === id))
+      .filter((i) => i >= 0);
+    const values = await multiSelectMenu(
+      rl,
+      'Select models — Space toggle, Enter confirm (check order = fallback priority):',
+      options,
+      preChecked
+    );
+    return values ?? (currentChain.length ? currentChain : [options[0].value]);
+  }
+
+  let chain = initialChain;
+  if (!chain.length) {
+    chain = await pickModels([]);
+    saveModels(chain);
   }
 
   let messages = [{ role: 'system', content: systemPrompt(process.cwd()) }];
-  const spinner = createSpinner();
 
   const permissions = createPermissions(async (preview) => {
     spinner.stop();
@@ -63,7 +108,10 @@ export async function startRepl({ client, models, initialModel, saveModel }) {
     return { choice: value };
   });
 
-  console.log(`\njonathan-ai — model: ${model}\nType a request, or /help for commands.`);
+  const chainLabel = () =>
+    `${chain[0]}${chain.length > 1 ? ` (+${chain.length - 1} fallback${chain.length > 2 ? 's' : ''})` : ''}`;
+
+  console.log(`\njonathan-ai — model: ${chainLabel()}\nType a request, or /help for commands.`);
 
   while (true) {
     const input = (await rl.question(`\n${promptLabel()}`)).trim();
@@ -71,7 +119,7 @@ export async function startRepl({ client, models, initialModel, saveModel }) {
 
     if (input === '/exit') break;
     if (input === '/help') {
-      console.log('/model  switch model\n/clear  reset conversation\n/help   this help\n/exit   quit');
+      console.log('/model  select models (order = fallback priority)\n/clear  reset conversation\n/help   this help\n/exit   quit');
       continue;
     }
     if (input === '/clear') {
@@ -80,9 +128,9 @@ export async function startRepl({ client, models, initialModel, saveModel }) {
       continue;
     }
     if (input === '/model') {
-      model = await pickModel(rl, models, model);
-      saveModel(model);
-      console.log(`(model: ${model})`);
+      chain = await pickModels(chain);
+      saveModels(chain);
+      console.log(`(model: ${chainLabel()})`);
       continue;
     }
     if (input.startsWith('/')) {
@@ -96,7 +144,7 @@ export async function startRepl({ client, models, initialModel, saveModel }) {
     try {
       await runTurn({
         client,
-        model,
+        models: [...chain],
         messages,
         tools,
         permissions,
@@ -111,11 +159,16 @@ export async function startRepl({ client, models, initialModel, saveModel }) {
         },
         onRetry: (attempt, retries, delayMs) =>
           spinner.update(`rate-limited, retrying in ${delayMs / 1000}s (${attempt}/${retries})...`),
+        onModelSwitch: (from, to) => {
+          spinner.update(`${shortModelName(from)} unavailable — switching to ${shortModelName(to)}...`);
+          chain = [to, ...chain.filter((id) => id !== from && id !== to), from];
+          saveModels(chain);
+        },
       });
       process.stdout.write(highlighter.flush());
       console.log();
     } catch (err) {
-      const hint = err.status === 429 || err.status >= 500 ? ' — try /model to switch models' : '';
+      const hint = err.status === 429 || err.status >= 500 ? ' — all models in your chain failed; try /model' : '';
       console.error(`\n${red(`[error] ${err.message}`)}${hint}`);
     } finally {
       spinner.stop();
@@ -123,22 +176,4 @@ export async function startRepl({ client, models, initialModel, saveModel }) {
   }
 
   rl.close();
-}
-
-async function pickModel(rl, models, current) {
-  console.log('\nFree tool-capable models on OpenRouter:');
-  models.forEach((m, i) => {
-    const ctx = m.context ? `  (${Math.round(m.context / 1000)}k ctx)` : '';
-    const mark = m.id === current ? '  *current*' : '';
-    console.log(`${String(i + 1).padStart(3)}. ${m.id}${ctx}${mark}`);
-  });
-  const answer = (await rl.question('Model number > ')).trim();
-  const idx = Number(answer) - 1;
-  if (Number.isInteger(idx) && idx >= 0 && idx < models.length) return models[idx].id;
-  if (current) {
-    console.log('Keeping current model.');
-    return current;
-  }
-  console.log('Invalid choice, using the first model.');
-  return models[0].id;
 }

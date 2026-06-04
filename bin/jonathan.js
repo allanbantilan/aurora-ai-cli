@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 import readline from 'node:readline/promises';
-import { loadConfig, saveConfig, getApiKey } from '../src/config.js';
+import { loadConfig, saveConfig, getApiKey, migrateConfig } from '../src/config.js';
 import { createClient, fetchFreeToolModels } from '../src/client.js';
 import { startRepl } from '../src/repl.js';
 
 const config = loadConfig();
+if (migrateConfig(config)) saveConfig(config);
 
 let apiKey = getApiKey(config);
 if (!apiKey) {
@@ -19,6 +20,8 @@ if (!apiKey) {
   saveConfig(config);
 }
 
+const savedChain = Array.isArray(config.lastModels) ? config.lastModels : [];
+
 let models;
 try {
   models = await fetchFreeToolModels();
@@ -28,22 +31,23 @@ try {
   }
 } catch (err) {
   console.error(`[warn] Could not fetch model list: ${err.message}`);
-  if (!config.lastModel) {
-    console.error('No previously used model to fall back to. Check your connection and retry.');
+  if (!savedChain.length) {
+    console.error('No previously used models to fall back to. Check your connection and retry.');
     process.exit(1);
   }
-  console.error(`Falling back to last-used model: ${config.lastModel}`);
-  models = [{ id: config.lastModel }];
+  console.error(`Falling back to last-used models: ${savedChain.join(', ')}`);
+  models = savedChain.map((id) => ({ id }));
 }
 
-const initialModel = models.some((m) => m.id === config.lastModel) ? config.lastModel : null;
+// drop chain entries that no longer exist in the live model list
+const initialChain = savedChain.filter((id) => models.some((m) => m.id === id));
 
 await startRepl({
   client: createClient(apiKey),
   models,
-  initialModel,
-  saveModel: (id) => {
-    config.lastModel = id;
+  initialChain,
+  saveModels: (chain) => {
+    config.lastModels = chain;
     saveConfig(config);
   },
 });
