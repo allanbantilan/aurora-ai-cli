@@ -82,3 +82,50 @@ export function createSpinner() {
     },
   };
 }
+
+/**
+ * Streams text and styles ``` fenced code blocks distinctly from prose.
+ * Buffers the current incomplete line so fences split across stream chunks
+ * are detected; emits only complete lines (flush() returns the tail).
+ */
+export class CodeHighlighter {
+  constructor({ enabled = colorEnabled } = {}) {
+    this.enabled = enabled;
+    this.buffer = '';
+    this.inFence = false;
+  }
+
+  highlight(chunk) {
+    if (!this.enabled) return chunk;
+    this.buffer += chunk;
+    let out = '';
+    let nl;
+    while ((nl = this.buffer.indexOf('\n')) !== -1) {
+      const line = this.buffer.slice(0, nl);
+      this.buffer = this.buffer.slice(nl + 1);
+      out += this.#renderLine(line) + '\n';
+    }
+    return out;
+  }
+
+  /** Return any buffered tail (call once at end of stream). */
+  flush() {
+    if (!this.enabled) return '';
+    const rest = this.buffer;
+    this.buffer = '';
+    return rest ? this.#renderLine(rest) : '';
+  }
+
+  #renderLine(line) {
+    if (line.trimStart().startsWith('```')) {
+      if (!this.inFence) {
+        this.inFence = true;
+        const lang = line.trim().slice(3).trim();
+        return forceDim(`╭── ${lang ? `${lang} ` : ''}${'─'.repeat(6)}`);
+      }
+      this.inFence = false;
+      return forceDim(`╰${'─'.repeat(9)}`);
+    }
+    return this.inFence ? forceDim('│ ') + forceYellow(line) : line;
+  }
+}
