@@ -146,6 +146,9 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
 
     messages.push({ role: 'user', content: input });
     const highlighter = new CodeHighlighter();
+    const writeModelText = createEchoSuppressor(input, (t) => {
+      process.stdout.write(highlighter.highlight(t));
+    });
     spinner.start('thinking...');
     try {
       await runTurn({
@@ -156,7 +159,7 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
         permissions,
         onText: (t) => {
           spinner.stop();
-          process.stdout.write(highlighter.highlight(t));
+          writeModelText(t);
         },
         onToolStart: (name, args) => {
           spinner.stop();
@@ -171,6 +174,7 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
           saveModels(chain);
         },
       });
+      writeModelText.flush();
       process.stdout.write(highlighter.flush());
       console.log();
     } catch (err) {
@@ -182,4 +186,39 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
   }
 
   rl.close();
+}
+
+export function createEchoSuppressor(input, write) {
+  const echoedLine = `${input.trim()}\n`;
+  let buffer = '';
+  let decided = false;
+
+  const emit = (chunk) => {
+    if (chunk) write(chunk);
+  };
+
+  const suppress = (chunk) => {
+    if (decided) {
+      emit(chunk);
+      return;
+    }
+
+    buffer += chunk;
+    if (echoedLine.startsWith(buffer)) return;
+
+    decided = true;
+    if (buffer.startsWith(echoedLine)) emit(buffer.slice(echoedLine.length));
+    else emit(buffer);
+    buffer = '';
+  };
+
+  suppress.flush = () => {
+    if (!decided && buffer) {
+      emit(buffer);
+      buffer = '';
+      decided = true;
+    }
+  };
+
+  return suppress;
 }
