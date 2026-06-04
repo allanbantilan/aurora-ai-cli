@@ -22,6 +22,23 @@ test('spinner is safe to start/update/stop without a TTY', () => {
   s.stop(); // idempotent
 });
 
+test('spinner update accepts a text function and renders its value', () => {
+  // a function text provider lets the spinner re-render time-driven content
+  // (e.g. a reasoning elapsed counter) on every frame, not just on events
+  const logs = [];
+  const orig = console.log;
+  console.log = (s) => logs.push(s);
+  try {
+    const s = createSpinner(); // tests run non-TTY → static line variant
+    s.start('thinking...');
+    s.update(() => 'reasoning... (3s)');
+    s.stop();
+  } finally {
+    console.log = orig;
+  }
+  assert.deepEqual(logs, ['thinking...', 'reasoning... (3s)']);
+});
+
 test('highlighter passes prose through unchanged', () => {
   const h = new CodeHighlighter({ enabled: true });
   assert.equal(h.highlight('hello world\n'), 'hello world\n');

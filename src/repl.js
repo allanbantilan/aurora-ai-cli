@@ -183,7 +183,6 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
       process.stdout.write(highlighter.highlight(t));
     });
     let reasoningStarted = 0;
-    let reasoningSeconds = -1;
     let assistantText = '';
     toolsExecuted = [];
     spinner.start('thinking...');
@@ -200,17 +199,14 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
           writeModelText(t);
         },
         onReasoning: () => {
-          if (!reasoningStarted) reasoningStarted = Date.now();
-          // throttle to one update per elapsed second — reasoning deltas can
-          // arrive hundreds of times per response (non-TTY prints each update)
-          const s = Math.round((Date.now() - reasoningStarted) / 1000);
-          if (s === reasoningSeconds) return;
-          reasoningSeconds = s;
-          spinner.update(`reasoning... (${s}s)`);
+          if (reasoningStarted) return; // installed once per reasoning phase
+          reasoningStarted = Date.now();
+          // time-driven: the spinner re-renders this every frame, so the
+          // elapsed counter keeps ticking even when reasoning deltas pause
+          spinner.update(() => `reasoning... (${Math.round((Date.now() - reasoningStarted) / 1000)}s)`);
         },
         onToolStart: (name, args) => {
           reasoningStarted = 0;
-          reasoningSeconds = -1;
           spinner.stop();
           console.log(`\n${magenta(`[tool] ${name}`)} ${dim(JSON.stringify(args).slice(0, 160))}`);
           spinner.start('thinking...');

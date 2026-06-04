@@ -40,6 +40,9 @@ export function statusLine(cwd, chain) {
 const FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 const ASCII_FRAMES = ['-', '\\', '|', '/'];
 
+/** Text may be a string or a function re-evaluated on every render (for time-driven content). */
+const renderText = (t) => (typeof t === 'function' ? t() : t);
+
 /** Animated one-line spinner. Falls back to a static line on non-TTY stdout. */
 export function createSpinner() {
   if (!colorEnabled) {
@@ -47,12 +50,12 @@ export function createSpinner() {
     return {
       start(text) {
         if (!shown) {
-          console.log(text);
+          console.log(renderText(text));
           shown = true;
         }
       },
       update(text) {
-        console.log(text);
+        console.log(renderText(text));
       },
       stop() {
         shown = false;
@@ -66,7 +69,7 @@ export function createSpinner() {
   let text = '';
   let i = 0;
   const draw = () =>
-    process.stdout.write(`\r${ESC}[2K${cyan(frames[i++ % frames.length])} ${dim(text)}`);
+    process.stdout.write(`\r${ESC}[2K${cyan(frames[i++ % frames.length])} ${dim(renderText(text))}`);
 
   return {
     start(t) {
