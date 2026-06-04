@@ -27,10 +27,14 @@ export function promptLabel(cwd = process.cwd()) {
   return `${cyan(path.basename(cwd))} > `;
 }
 
+// legacy conhost often lacks Unicode glyphs; Windows Terminal/VS Code set env markers
+export const legacyConhost =
+  process.platform === 'win32' && !process.env.WT_SESSION && !process.env.TERM_PROGRAM;
+
 /** Dim one-line status: full cwd · active model (+N fallbacks). */
 export function statusLine(cwd, chain) {
   const extra = chain.length > 1 ? ` (+${chain.length - 1} fallback${chain.length > 2 ? 's' : ''})` : '';
-  return dim(`${cwd} · ${chain[0] ?? 'no model'}${extra}`);
+  return dim(`${cwd} ${legacyConhost ? '|' : '·'} ${chain[0] ?? 'no model'}${extra}`);
 }
 
 const FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
@@ -56,11 +60,7 @@ export function createSpinner() {
     };
   }
 
-  // legacy conhost often lacks braille glyphs; Windows Terminal/VS Code set env markers
-  const frames =
-    process.platform === 'win32' && !process.env.WT_SESSION && !process.env.TERM_PROGRAM
-      ? ASCII_FRAMES
-      : FRAMES;
+  const frames = legacyConhost ? ASCII_FRAMES : FRAMES;
 
   let timer = null;
   let text = '';

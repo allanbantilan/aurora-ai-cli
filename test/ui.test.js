@@ -176,3 +176,13 @@ test('statusLine with a single model has no fallback suffix', () => {
   assert.match(line, /m\/one/);
   assert.doesNotMatch(line, /fallback/);
 });
+
+test('statusLine with two models uses singular fallback', () => {
+  assert.match(statusLine('/home/x', ['m/a', 'm/b']), /\+1 fallback(?!s)/);
+});
+
+test('statusLine with an empty chain says no model', () => {
+  const line = statusLine('/home/x', []);
+  assert.match(line, /no model/);
+  assert.doesNotMatch(line, /fallback/);
+});
