@@ -1,0 +1,19 @@
+{
+  "name": "jonathan-ai",
+  "version": "0.1.0",
+  "description": "CLI coding agent powered by free OpenRouter models",
+  "type": "module",
+  "bin": {
+    "jonathan": "bin/jonathan.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node --test test/"
+  },
+  "dependencies": {
+    "openai": "^6.42.0",
+    "picomatch": "^4.0.4"
+  }
+}
