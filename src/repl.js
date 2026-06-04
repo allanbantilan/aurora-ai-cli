@@ -7,6 +7,18 @@ import { systemPrompt } from './prompt.js';
 export async function startRepl({ client, models, initialModel, saveModel }) {
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
 
+  // readline intercepts Ctrl+C and emits SIGINT on the interface; without this
+  // listener the process can never be interrupted (it just pauses stdin).
+  rl.on('SIGINT', () => {
+    console.log('\n(interrupted — exiting)');
+    rl.close();
+    process.exit(0);
+  });
+
+  // Ctrl+D / piped stdin ending closes the interface; exit instead of
+  // crashing on the next rl.question (ERR_USE_AFTER_CLOSE).
+  rl.on('close', () => process.exit(0));
+
   let model = initialModel;
   if (!model) {
     model = await pickModel(rl, models, null);
@@ -57,6 +69,8 @@ export async function startRepl({ client, models, initialModel, saveModel }) {
         permissions,
         onText: (t) => process.stdout.write(t),
         onToolStart: (name, args) => console.log(`\n[tool] ${name} ${JSON.stringify(args).slice(0, 160)}`),
+        onRetry: (attempt, retries, delayMs) =>
+          console.log(`[rate-limited] retrying in ${delayMs / 1000}s (attempt ${attempt}/${retries})...`),
       });
       console.log();
     } catch (err) {
