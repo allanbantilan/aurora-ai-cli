@@ -111,6 +111,15 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
     return { choice: value };
   });
 
+  let toolsExecuted = [];
+  const trackedPermissions = {
+    check: async (name, args) => {
+      const result = await permissions.check(name, args);
+      if (result.allowed) toolsExecuted.push(name);
+      return result;
+    },
+  };
+
   const chainLabel = () =>
     `${chain[0]}${chain.length > 1 ? ` (+${chain.length - 1} fallback${chain.length > 2 ? 's' : ''})` : ''}`;
 
@@ -152,7 +161,7 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
     let reasoningStarted = 0;
     let reasoningSeconds = -1;
     let assistantText = '';
-    const toolsCalled = [];
+    toolsExecuted = [];
     spinner.start('thinking...');
     try {
       await runTurn({
@@ -160,7 +169,7 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
         models: [...chain],
         messages,
         tools,
-        permissions,
+        permissions: trackedPermissions,
         onText: (t) => {
           assistantText += t;
           spinner.stop();
@@ -176,7 +185,6 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
           spinner.update(`reasoning... (${s}s)`);
         },
         onToolStart: (name, args) => {
-          toolsCalled.push(name);
           reasoningStarted = 0;
           reasoningSeconds = -1;
           spinner.stop();
@@ -194,7 +202,7 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
       writeModelText.flush();
       process.stdout.write(highlighter.flush());
       console.log();
-      if (claimsUnappliedChanges(assistantText, toolsCalled)) {
+      if (claimsUnappliedChanges(assistantText, toolsExecuted)) {
         console.log(yellow('⚠ the model described changes but did not modify any files — ask it to apply them using its tools'));
       }
     } catch (err) {
@@ -208,8 +216,8 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
   rl.close();
 }
 
-const WRITE_TOOLS = new Set(['write_file', 'edit_file']);
-const CLAIM_RE = /\bI(?:'ve| have)? (?:added|updated|edited|created|fixed|changed|wrote|applied)\b/i;
+const WRITE_TOOLS = new Set(['write_file', 'edit_file', 'run_command']);
+const CLAIM_RE = /\bI(?:'ve| have)? (?:added|updated|edited|created|fixed|changed|wrote|applied|modified|removed|deleted|renamed|replaced|implemented|refactored|moved)\b/i;
 
 /**
  * True when the assistant's reply reads like it applied changes (claim language

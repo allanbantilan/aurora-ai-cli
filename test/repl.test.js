@@ -53,3 +53,15 @@ test('claimsUnappliedChanges matches "I have updated" and "I updated" variants',
   assert.equal(claimsUnappliedChanges(`I have updated the styles.${code}`, []), true);
   assert.equal(claimsUnappliedChanges(`I updated the styles.${code}`, []), true);
 });
+
+test('claimsUnappliedChanges treats run_command as write-capable', () => {
+  const text = "I've added the file:\n```js\nx\n```";
+  assert.equal(claimsUnappliedChanges(text, ['run_command']), false);
+});
+
+test('claimsUnappliedChanges matches extended claim verbs', () => {
+  const code = '\n```js\nx\n```';
+  for (const v of ['modified', 'removed', 'implemented', 'replaced']) {
+    assert.equal(claimsUnappliedChanges(`I ${v} the helper.${code}`, []), true, v);
+  }
+});
