@@ -8,6 +8,7 @@ import * as listFiles from '../src/tools/list-files.js';
 import * as grep from '../src/tools/grep.js';
 import * as writeFile from '../src/tools/write-file.js';
 import * as editFile from '../src/tools/edit-file.js';
+import * as runCommand from '../src/tools/run-command.js';
 
 function tmpProject() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jai-tools-'));
@@ -88,4 +89,16 @@ test('edit_file treats $ patterns in new_string literally', () => {
   const dir = tmpProject();
   editFile.execute({ path: 'src/app.js', old_string: 'const x = 1;', new_string: 'const x = "$&$$";' }, dir);
   assert.match(fs.readFileSync(path.join(dir, 'src', 'app.js'), 'utf8'), /const x = "\$&\$\$";/);
+});
+
+test('run_command captures stdout', async () => {
+  const dir = tmpProject();
+  const out = await runCommand.execute({ command: 'node -e "console.log(1)"' }, dir);
+  assert.match(out, /1/);
+});
+
+test('run_command reports failure without throwing', async () => {
+  const dir = tmpProject();
+  const out = await runCommand.execute({ command: 'node -e "process.exit(3)"' }, dir);
+  assert.match(out, /Command failed/);
 });
