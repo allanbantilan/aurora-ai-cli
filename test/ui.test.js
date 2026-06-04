@@ -136,6 +136,35 @@ test('selectMenu does not let readline eat the selection keystrokes', async () =
   rl.close();
 });
 
+test('menus hide the terminal cursor while open and restore it on close', async () => {
+  const input = new PassThrough();
+  input.isTTY = true;
+  input.isRaw = true;
+  input.setRawMode = function (v) {
+    this.isRaw = v;
+    return this;
+  };
+  const fakeRl = { input, pause() {}, resume() {} };
+
+  let out = '';
+  const orig = process.stdout.write.bind(process.stdout);
+  process.stdout.write = (s) => {
+    out += s;
+    return true;
+  };
+  try {
+    const menuPromise = selectMenu(fakeRl, 'Pick:', [{ label: 'A', value: 'a' }]);
+    input.write('\r');
+    await menuPromise;
+  } finally {
+    process.stdout.write = orig;
+  }
+  const esc = String.fromCharCode(27);
+  assert.ok(out.includes(`${esc}[?25l`), 'cursor hidden while the menu is open');
+  assert.ok(out.includes(`${esc}[?25h`), 'cursor restored on close');
+  assert.ok(out.lastIndexOf(`${esc}[?25h`) > out.lastIndexOf(`${esc}[?25l`), 'restore comes last');
+});
+
 test('menus restore the previous raw-mode state on close', async () => {
   // terminal-mode readline keeps the tty raw for its whole lifetime; if the
   // menu drops it to cooked on release, the console re-echoes every later

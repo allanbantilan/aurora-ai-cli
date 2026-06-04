@@ -170,6 +170,7 @@ function withRawKeys(rl, onKey) {
   const wasRaw = stdin.isRaw === true;
   if (stdin.isTTY) stdin.setRawMode(true);
   stdin.resume();
+  process.stdout.write(`${ESC}[?25l`); // hide the cursor — it parks confusingly below the menu
   // AURORA_DEBUG_KEYS=1 logs every keypress as the menu receives it (diagnostics)
   const handler = process.env.AURORA_DEBUG_KEYS
     ? (str, key) => {
@@ -180,6 +181,7 @@ function withRawKeys(rl, onKey) {
   stdin.on('keypress', handler);
   return () => {
     stdin.removeListener('keypress', handler);
+    process.stdout.write(`${ESC}[?25h`);
     // restore the PREVIOUS raw-mode state — terminal-mode readline keeps the
     // tty raw; dropping to cooked here makes the console re-echo every later
     // input line (doubled input on Windows)
