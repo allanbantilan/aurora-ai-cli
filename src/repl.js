@@ -3,6 +3,17 @@ import { runTurn } from './agent.js';
 import * as tools from './tools/index.js';
 import { createPermissions } from './permissions.js';
 import { systemPrompt } from './prompt.js';
+import {
+  promptLabel,
+  createSpinner,
+  CodeHighlighter,
+  selectMenu,
+  interactiveEnabled,
+  yellow,
+  magenta,
+  red,
+  dim,
+} from './ui.js';
 
 export async function startRepl({ client, models, initialModel, saveModel }) {
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
@@ -26,16 +37,36 @@ export async function startRepl({ client, models, initialModel, saveModel }) {
   }
 
   let messages = [{ role: 'system', content: systemPrompt(process.cwd()) }];
+  const spinner = createSpinner();
 
   const permissions = createPermissions(async (preview) => {
-    console.log(`\n[permission required]\n${preview}`);
-    return rl.question('Allow? (y)es once / (a)lways this session / (n)o > ');
+    spinner.stop();
+    console.log(`\n${yellow('[permission required]')}\n${preview}\n`);
+
+    if (!interactiveEnabled) {
+      const a = (await rl.question('Allow? (y)es once / (a)lways this session / (n)o > '))
+        .trim()
+        .toLowerCase();
+      return { choice: a === 'y' ? 'yes' : a === 'a' ? 'always' : 'no' };
+    }
+
+    const value = await selectMenu(rl, 'Allow?', [
+      { label: 'Yes, once', value: 'yes' },
+      { label: 'Yes, for the rest of the session', value: 'always' },
+      { label: 'No', value: 'no', isEscape: true },
+      { label: 'No — tell the AI what to do instead', value: 'feedback' },
+    ]);
+    if (value === 'feedback') {
+      const feedback = (await rl.question('Tell the AI what to do instead > ')).trim();
+      return { choice: 'no', ...(feedback ? { feedback } : {}) };
+    }
+    return { choice: value };
   });
 
   console.log(`\njonathan-ai — model: ${model}\nType a request, or /help for commands.`);
 
   while (true) {
-    const input = (await rl.question('\nyou > ')).trim();
+    const input = (await rl.question(`\n${promptLabel()}`)).trim();
     if (!input) continue;
 
     if (input === '/exit') break;
@@ -60,6 +91,8 @@ export async function startRepl({ client, models, initialModel, saveModel }) {
     }
 
     messages.push({ role: 'user', content: input });
+    const highlighter = new CodeHighlighter();
+    spinner.start('thinking...');
     try {
       await runTurn({
         client,
@@ -67,15 +100,25 @@ export async function startRepl({ client, models, initialModel, saveModel }) {
         messages,
         tools,
         permissions,
-        onText: (t) => process.stdout.write(t),
-        onToolStart: (name, args) => console.log(`\n[tool] ${name} ${JSON.stringify(args).slice(0, 160)}`),
+        onText: (t) => {
+          spinner.stop();
+          process.stdout.write(highlighter.highlight(t));
+        },
+        onToolStart: (name, args) => {
+          spinner.stop();
+          console.log(`\n${magenta(`[tool] ${name}`)} ${dim(JSON.stringify(args).slice(0, 160))}`);
+          spinner.start('thinking...');
+        },
         onRetry: (attempt, retries, delayMs) =>
-          console.log(`[rate-limited] retrying in ${delayMs / 1000}s (attempt ${attempt}/${retries})...`),
+          spinner.update(`rate-limited, retrying in ${delayMs / 1000}s (${attempt}/${retries})...`),
       });
+      process.stdout.write(highlighter.flush());
       console.log();
     } catch (err) {
       const hint = err.status === 429 || err.status >= 500 ? ' — try /model to switch models' : '';
-      console.error(`\n[error] ${err.message}${hint}`);
+      console.error(`\n${red(`[error] ${err.message}`)}${hint}`);
+    } finally {
+      spinner.stop();
     }
   }
 
