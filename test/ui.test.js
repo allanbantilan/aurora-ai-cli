@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import { promptLabel, createSpinner } from '../src/ui.js';
 import { CodeHighlighter } from '../src/ui.js';
+import { menuReduce } from '../src/ui.js';
 
 test('promptLabel shows the cwd folder name', () => {
   const label = promptLabel(path.join('C:', 'projects', 'my-app'));
@@ -56,4 +57,36 @@ test('highlighter is a pure passthrough when disabled', () => {
   const text = '```js\ncode\n```\npartial';
   assert.equal(h.highlight(text), text);
   assert.equal(h.flush(), '');
+});
+
+test('menuReduce moves and wraps with arrow keys', () => {
+  let s = { index: 0, count: 3, done: false, escaped: false };
+  s = menuReduce(s, { name: 'down' });
+  assert.equal(s.index, 1);
+  s = menuReduce(s, { name: 'up' });
+  s = menuReduce(s, { name: 'up' });
+  assert.equal(s.index, 2); // wrapped from 0 to last
+  s = menuReduce(s, { name: 'down' });
+  assert.equal(s.index, 0); // wrapped back to first
+});
+
+test('menuReduce selects on enter', () => {
+  const s = menuReduce({ index: 1, count: 3, done: false, escaped: false }, { name: 'return' });
+  assert.deepEqual([s.done, s.index], [true, 1]);
+});
+
+test('menuReduce selects directly with a digit', () => {
+  const s = menuReduce({ index: 0, count: 4, done: false, escaped: false }, { name: '3', sequence: '3' });
+  assert.deepEqual([s.done, s.index], [true, 2]);
+});
+
+test('menuReduce ignores out-of-range digits and unknown keys', () => {
+  const start = { index: 0, count: 2, done: false, escaped: false };
+  assert.deepEqual(menuReduce(start, { name: '9', sequence: '9' }), start);
+  assert.deepEqual(menuReduce(start, { name: 'x', sequence: 'x' }), start);
+});
+
+test('menuReduce flags escape', () => {
+  const s = menuReduce({ index: 0, count: 3, done: false, escaped: false }, { name: 'escape' });
+  assert.deepEqual([s.done, s.escaped], [true, true]);
 });

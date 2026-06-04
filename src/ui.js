@@ -1,4 +1,5 @@
 import path from 'node:path';
+import readline from 'node:readline';
 
 export const colorEnabled = Boolean(process.stdout.isTTY) && !process.env.NO_COLOR;
 export const interactiveEnabled = Boolean(process.stdin.isTTY && process.stdout.isTTY);
@@ -128,4 +129,74 @@ export class CodeHighlighter {
     }
     return this.inFence ? forceDim('│ ') + forceYellow(line) : line;
   }
+}
+
+/** Pure keypress → state transition for selectMenu (unit-testable). */
+export function menuReduce(state, key = {}) {
+  const { index, count } = state;
+  if (key.name === 'up') return { ...state, index: (index - 1 + count) % count };
+  if (key.name === 'down') return { ...state, index: (index + 1) % count };
+  if (key.name === 'return') return { ...state, done: true };
+  if (key.name === 'escape') return { ...state, done: true, escaped: true };
+  if (/^[1-9]$/.test(key.sequence ?? '') && Number(key.sequence) <= count) {
+    return { ...state, index: Number(key.sequence) - 1, done: true };
+  }
+  return state;
+}
+
+/**
+ * Arrow-key selection menu. options: [{label, value, isEscape?}].
+ * Esc resolves to the option flagged isEscape (or the first option).
+ * Temporarily detaches the shared readline interface's keypress listeners so
+ * arrows/enter don't trigger history navigation or line events.
+ */
+export function selectMenu(rl, title, options) {
+  return new Promise((resolve) => {
+    const escIndex = Math.max(options.findIndex((o) => o.isEscape), 0);
+    let state = { index: 0, count: options.length, done: false, escaped: false };
+
+    const render = (redraw) => {
+      if (redraw) process.stdout.write(`${ESC}[${options.length + 1}A`);
+      process.stdout.write(`${ESC}[0J${title}\n`);
+      options.forEach((o, i) => {
+        const row = `${i === state.index ? '❯' : ' '} ${i + 1}. ${o.label}`;
+        console.log(i === state.index ? forceCyan(row) : row);
+      });
+    };
+
+    // Detach readline's own keypress handling for the duration of the menu.
+    rl.pause();
+    const previous = process.stdin.listeners('keypress');
+    previous.forEach((l) => process.stdin.removeListener('keypress', l));
+    readline.emitKeypressEvents(process.stdin);
+    if (process.stdin.isTTY) process.stdin.setRawMode(true);
+    process.stdin.resume();
+
+    const cleanup = () => {
+      process.stdin.removeListener('keypress', onKey);
+      if (process.stdin.isTTY) process.stdin.setRawMode(false);
+      previous.forEach((l) => process.stdin.on('keypress', l));
+      rl.resume();
+    };
+
+    const onKey = (str, key = {}) => {
+      if (key.ctrl && key.name === 'c') {
+        cleanup();
+        console.log('\n(interrupted — exiting)');
+        process.exit(0);
+      }
+      const next = menuReduce(state, key);
+      if (next === state) return;
+      state = next;
+      if (state.done) {
+        cleanup();
+        resolve(options[state.escaped ? escIndex : state.index].value);
+      } else {
+        render(true);
+      }
+    };
+
+    process.stdin.on('keypress', onKey);
+    render(false);
+  });
 }
