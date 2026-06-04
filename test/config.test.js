@@ -1,0 +1,28 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { loadConfig, saveConfig, getApiKey } from '../src/config.js';
+
+function tmpFile() {
+  return path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'jai-cfg-')), 'config.json');
+}
+
+test('loadConfig returns {} when file is missing', () => {
+  assert.deepEqual(loadConfig(tmpFile()), {});
+});
+
+test('saveConfig then loadConfig round-trips', () => {
+  const file = tmpFile();
+  saveConfig({ apiKey: 'k', lastModel: 'm' }, file);
+  assert.deepEqual(loadConfig(file), { apiKey: 'k', lastModel: 'm' });
+});
+
+test('getApiKey prefers env var over config', () => {
+  process.env.OPENROUTER_API_KEY = 'env-key';
+  assert.equal(getApiKey({ apiKey: 'cfg-key' }), 'env-key');
+  delete process.env.OPENROUTER_API_KEY;
+  assert.equal(getApiKey({ apiKey: 'cfg-key' }), 'cfg-key');
+  assert.equal(getApiKey({}), null);
+});
