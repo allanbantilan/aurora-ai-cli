@@ -119,6 +119,25 @@ test('selectMenu does not let readline eat the selection keystrokes', async () =
   rl.close();
 });
 
+test('menus restore the previous raw-mode state on close', async () => {
+  // terminal-mode readline keeps the tty raw for its whole lifetime; if the
+  // menu drops it to cooked on release, the console re-echoes every later
+  // input line (seen as doubled input on Windows)
+  const input = new PassThrough();
+  input.isTTY = true;
+  input.isRaw = true; // as readline left it
+  input.setRawMode = function (v) {
+    this.isRaw = v;
+    return this;
+  };
+  const fakeRl = { input, pause() {}, resume() {} };
+
+  const menuPromise = selectMenu(fakeRl, 'Pick:', [{ label: 'A', value: 'a' }]);
+  input.write('\r');
+  assert.equal(await menuPromise, 'a');
+  assert.equal(input.isRaw, true, 'raw mode must be restored, not unconditionally disabled');
+});
+
 const mm = (over = {}) => ({ index: 0, count: 4, checked: [], done: false, cancelled: false, ...over });
 
 test('multiMenuReduce toggles with space preserving check order', () => {

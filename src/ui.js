@@ -164,12 +164,16 @@ function withRawKeys(rl, onKey) {
   const prevKeypress = stdin.listeners('keypress');
   prevKeypress.forEach((l) => stdin.removeListener('keypress', l));
   readline.emitKeypressEvents(stdin);
+  const wasRaw = stdin.isRaw === true;
   if (stdin.isTTY) stdin.setRawMode(true);
   stdin.resume();
   stdin.on('keypress', onKey);
   return () => {
     stdin.removeListener('keypress', onKey);
-    if (stdin.isTTY) stdin.setRawMode(false);
+    // restore the PREVIOUS raw-mode state — terminal-mode readline keeps the
+    // tty raw; dropping to cooked here makes the console re-echo every later
+    // input line (doubled input on Windows)
+    if (stdin.isTTY) stdin.setRawMode(wasRaw);
     prevKeypress.forEach((l) => stdin.on('keypress', l));
     rl.resume();
   };
