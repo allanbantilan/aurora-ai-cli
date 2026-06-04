@@ -83,8 +83,12 @@ export async function runTurn({
 /** Race one stream read against the inter-delta stall timer. */
 function nextWithStall(it, stallMs, model) {
   let timer;
+  // swallow the race-loser's eventual rejection (e.g. abort error after a
+  // stall) so it can never surface as an unhandled rejection
+  const read = it.next();
+  read.catch(() => {});
   return Promise.race([
-    it.next(),
+    read,
     new Promise((_, reject) => {
       timer = setTimeout(() => {
         reject(Object.assign(new Error(`${model}: no response for ${Math.round(stallMs / 1000)}s`), { stalled: true }));
