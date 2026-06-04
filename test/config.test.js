@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { loadConfig, saveConfig, getApiKey } from '../src/config.js';
+import { loadConfig, saveConfig, getApiKey, migrateConfig } from '../src/config.js';
 
 function tmpFile() {
   return path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'jai-cfg-')), 'config.json');
@@ -25,4 +25,27 @@ test('getApiKey prefers env var over config', () => {
   delete process.env.OPENROUTER_API_KEY;
   assert.equal(getApiKey({ apiKey: 'cfg-key' }), 'cfg-key');
   assert.equal(getApiKey({}), null);
+});
+
+test('migrateConfig converts lastModel to lastModels', () => {
+  const config = { lastModel: 'a/m1' };
+  assert.equal(migrateConfig(config), true);
+  assert.deepEqual(config.lastModels, ['a/m1']);
+  assert.equal('lastModel' in config, false);
+});
+
+test('migrateConfig prefers existing lastModels and drops lastModel', () => {
+  const config = { lastModel: 'a/old', lastModels: ['b/new'] };
+  assert.equal(migrateConfig(config), true);
+  assert.deepEqual(config.lastModels, ['b/new']);
+  assert.equal('lastModel' in config, false);
+});
+
+test('migrateConfig leaves modern or empty configs untouched', () => {
+  const modern = { lastModels: ['a/m1'] };
+  assert.equal(migrateConfig(modern), false);
+  assert.deepEqual(modern, { lastModels: ['a/m1'] });
+  const empty = {};
+  assert.equal(migrateConfig(empty), false);
+  assert.deepEqual(empty, {});
 });

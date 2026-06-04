@@ -20,3 +20,17 @@ export function saveConfig(config, file = CONFIG_FILE) {
 export function getApiKey(config) {
   return process.env.OPENROUTER_API_KEY || config.apiKey || null;
 }
+
+/** Normalize legacy config (lastModel → lastModels). Returns true if changed. */
+export function migrateConfig(config) {
+  let changed = false;
+  if (!Array.isArray(config.lastModels) && typeof config.lastModel === 'string') {
+    config.lastModels = [config.lastModel];
+    changed = true;
+  }
+  if ('lastModel' in config) {
+    delete config.lastModel;
+    changed = true;
+  }
+  return changed;
+}
