@@ -27,8 +27,10 @@ export async function runTurn({ client, model, messages, tools, permissions, onT
       }
       if (result === undefined) {
         onToolStart?.(name, args);
-        const allowed = await permissions.check(name, args);
-        result = allowed ? await tools.executeTool(name, args) : 'User denied this action.';
+        const { allowed, feedback } = await permissions.check(name, args);
+        result = allowed
+          ? await tools.executeTool(name, args)
+          : `User denied this action.${feedback ? ` Instruction: ${feedback}` : ''}`;
       }
       messages.push({ role: 'tool', tool_call_id: call.id, content: result });
     }

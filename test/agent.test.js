@@ -36,8 +36,8 @@ function fakeClient(scripts) {
   };
 }
 
-const allowAll = { check: async () => true };
-const denyAll = { check: async () => false };
+const allowAll = { check: async () => ({ allowed: true }) };
+const denyAll = { check: async () => ({ allowed: false }) };
 
 function fakeTools(executeImpl) {
   return { definitions: [], executeTool: executeImpl };
@@ -138,4 +138,22 @@ test('iteration cap stops a looping model', async () => {
     }),
     /15 tool iterations/
   );
+});
+
+test('denial feedback is included in the tool result', async () => {
+  const client = fakeClient([
+    toolCallChunks('c1', 'run_command', '{"command":"rm -rf /"}'),
+    [chunk({ content: 'will do' })],
+  ]);
+  const messages = [{ role: 'user', content: 'wipe it' }];
+  await runTurn({
+    client,
+    model: 'm',
+    messages,
+    tools: fakeTools(async () => 'unused'),
+    permissions: { check: async () => ({ allowed: false, feedback: 'move it to backup/ instead' }) },
+  });
+  const toolMsg = messages.find((m) => m.role === 'tool');
+  assert.match(toolMsg.content, /denied/i);
+  assert.match(toolMsg.content, /move it to backup\/ instead/);
 });
