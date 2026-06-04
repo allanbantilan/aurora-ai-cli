@@ -12,6 +12,7 @@ import {
   selectMenu,
   multiSelectMenu,
   formatModelStatus,
+  formatToolPreview,
   shortModelName,
   modelCategory,
   interactiveEnabled,
@@ -110,9 +111,9 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
 
   let messages = [{ role: 'system', content: systemPrompt(process.cwd()) }];
 
-  const permissions = createPermissions(async (preview) => {
+  const permissions = createPermissions(async (toolName, args) => {
     spinner.stop();
-    console.log(`\n${yellow('[permission required]')}\n${preview}\n`);
+    console.log(`\n${yellow('[permission required]')}\n${formatToolPreview(toolName, args)}\n`);
 
     if (!interactiveEnabled) {
       const a = (await rl.question('Allow? (y)es once / (a)lways this session / (n)o > '))
@@ -127,10 +128,15 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
       { label: 'No', value: 'no', isEscape: true },
       { label: 'No — tell the AI what to do instead', value: 'feedback' },
     ]);
+    // the menu erases itself; leave a one-line record of the decision
     if (value === 'feedback') {
+      console.log(dim('✗ denied'));
       const feedback = (await rl.question('Tell the AI what to do instead > ')).trim();
       return { choice: 'no', ...(feedback ? { feedback } : {}) };
     }
+    console.log(
+      dim(value === 'yes' ? '✓ allowed once' : value === 'always' ? '✓ allowed for this session' : '✗ denied')
+    );
     return { choice: value };
   });
 

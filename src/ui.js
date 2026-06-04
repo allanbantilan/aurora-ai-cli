@@ -1,5 +1,7 @@
 import path from 'node:path';
+import fs from 'node:fs';
 import readline from 'node:readline';
+import { previewTool } from './tools/index.js';
 
 export const colorEnabled = Boolean(process.stdout.isTTY) && !process.env.NO_COLOR;
 export const interactiveEnabled = Boolean(process.stdin.isTTY && process.stdout.isTTY);
@@ -104,6 +106,7 @@ export class CodeHighlighter {
     this.enabled = enabled;
     this.buffer = '';
     this.inFence = false;
+    this.prevBlank = true; // tracks whether the last emitted line was blank
   }
 
   highlight(chunk) {
@@ -132,12 +135,67 @@ export class CodeHighlighter {
       if (!this.inFence) {
         this.inFence = true;
         const lang = line.trim().slice(3).trim();
-        return forceDim(`╭── ${lang ? `${lang} ` : ''}${'─'.repeat(6)}`);
+        // pad with a blank line so code blocks don't butt up against prose
+        const pad = this.prevBlank ? '' : '\n';
+        this.prevBlank = false;
+        return pad + forceDim(`╭── ${lang ? `${lang} ` : ''}${'─'.repeat(6)}`);
       }
       this.inFence = false;
-      return forceDim(`╰${'─'.repeat(9)}`);
+      this.prevBlank = true; // the appended newline leaves a blank line after the block
+      return forceDim(`╰${'─'.repeat(9)}`) + '\n';
     }
+    if (!this.inFence) this.prevBlank = line.trim() === '';
     return this.inFence ? forceDim('│ ') + forceYellow(line) : line;
+  }
+}
+
+const PREVIEW_MAX_CHARS = 8_000;
+const clipPreview = (t) =>
+  t.length > PREVIEW_MAX_CHARS ? `${t.slice(0, PREVIEW_MAX_CHARS)}\n...[truncated]` : t;
+
+/** Best-effort 1-based line number where `snippet` starts inside the file at `filePath`. */
+function startLineOf(filePath, snippet) {
+  try {
+    const text = fs.readFileSync(filePath, 'utf8');
+    const i = text.indexOf(snippet);
+    return i < 0 ? 1 : text.slice(0, i).split('\n').length;
+  } catch {
+    return 1;
+  }
+}
+
+/**
+ * Styled permission preview: file changes render as bordered, line-numbered
+ * code blocks so they stand apart from prose. Falls back to the plain
+ * previewTool text when colors are off (non-TTY / NO_COLOR).
+ */
+export function formatToolPreview(name, args, { colors = colorEnabled } = {}) {
+  if (!colors) return previewTool(name, args);
+
+  const block = (label, body, startLine = 1) => {
+    const lines = clipPreview(String(body ?? '')).split('\n');
+    const width = String(startLine + lines.length - 1).length;
+    return [
+      forceDim(`╭── ${label} ${'─'.repeat(6)}`),
+      ...lines.map((l, i) => forceDim(`│ ${String(startLine + i).padStart(width)} `) + forceYellow(l)),
+      forceDim(`╰${'─'.repeat(9)}`),
+    ].join('\n');
+  };
+
+  switch (name) {
+    case 'write_file':
+      return `${forceCyan('[write_file]')} ${args.path}\n${block(args.path, args.content)}`;
+    case 'edit_file': {
+      const line = startLineOf(args.path, args.old_string ?? '');
+      return (
+        `${forceCyan('[edit_file]')} ${args.path}\n` +
+        `${block('remove', args.old_string, line)}\n${block('insert', args.new_string, line)}`
+      );
+    }
+    case 'run_command':
+      return `${forceCyan('[run_command]')} ${forceYellow(String(args.command ?? ''))}`;
+    default:
+      return previewTool(name, args);
   }
 }
 
@@ -222,6 +280,8 @@ export function selectMenu(rl, title, options) {
       state = next;
       if (state.done) {
         release();
+        // erase the menu block — the caller prints a one-line record instead
+        process.stdout.write(`${ESC}[${options.length + 1}A${ESC}[0J`);
         resolve(options[state.escaped ? escIndex : state.index].value);
       } else {
         render(true);

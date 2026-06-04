@@ -1,11 +1,21 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
+import fs from 'node:fs';
+import os from 'node:os';
 import { PassThrough } from 'node:stream';
 import readlinePromises from 'node:readline/promises';
 import { promptLabel, createSpinner } from '../src/ui.js';
 import { CodeHighlighter } from '../src/ui.js';
-import { menuReduce, selectMenu, multiMenuReduce, formatModelStatus, statusLine, modelCategory } from '../src/ui.js';
+import {
+  menuReduce,
+  selectMenu,
+  multiMenuReduce,
+  formatModelStatus,
+  statusLine,
+  modelCategory,
+  formatToolPreview,
+} from '../src/ui.js';
 
 test('promptLabel shows the cwd folder name', () => {
   const label = promptLabel(path.join('C:', 'projects', 'my-app'));
@@ -182,6 +192,81 @@ test('menus restore the previous raw-mode state on close', async () => {
   input.write('\r');
   assert.equal(await menuPromise, 'a');
   assert.equal(input.isRaw, true, 'raw mode must be restored, not unconditionally disabled');
+});
+
+test('selectMenu erases its block from the screen on close', async () => {
+  const input = new PassThrough();
+  input.isTTY = true;
+  input.isRaw = true;
+  input.setRawMode = function (v) {
+    this.isRaw = v;
+    return this;
+  };
+  const fakeRl = { input, pause() {}, resume() {} };
+
+  let out = '';
+  const orig = process.stdout.write.bind(process.stdout);
+  process.stdout.write = (s) => {
+    out += s;
+    return true;
+  };
+  try {
+    const menuPromise = selectMenu(fakeRl, 'Allow?', [{ label: 'A', value: 'a' }]);
+    input.write('\r');
+    await menuPromise;
+  } finally {
+    process.stdout.write = orig;
+  }
+  const esc = String.fromCharCode(27);
+  // title + 1 option = 2 lines erased (cursor up 2, clear to end of screen)
+  assert.ok(out.includes(`${esc}[2A${esc}[0J`), 'menu block erased on close');
+});
+
+test('formatToolPreview renders write_file content as a numbered code block', () => {
+  const p = formatToolPreview('write_file', { path: 'a.html', content: '<p>x</p>\n<i>y</i>' }, { colors: true });
+  assert.match(p, /\[write_file\][^\n]*a\.html/);
+  assert.match(p, /╭── a\.html/);
+  assert.match(p, /│ 1 /); // line numbers in the gutter
+  assert.match(p, /│ 2 /);
+  assert.match(p, /<p>x<\/p>/);
+  assert.match(p, /╰/);
+});
+
+test('formatToolPreview renders edit_file as remove/insert blocks', () => {
+  const p = formatToolPreview('edit_file', { path: 'no-such-file.js', old_string: 'old()', new_string: 'new()' }, { colors: true });
+  assert.match(p, /\[edit_file\][^\n]*no-such-file\.js/);
+  assert.match(p, /╭── remove/);
+  assert.match(p, /old\(\)/);
+  assert.match(p, /╭── insert/);
+  assert.match(p, /new\(\)/);
+  assert.match(p, /│ 1 /); // unknown file → numbering falls back to 1
+});
+
+test('edit_file preview numbers lines from the match position in the file', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'aurora-ui-'));
+  const f = path.join(dir, 'x.js');
+  fs.writeFileSync(f, 'a\nb\nc\nTARGET\nd\n');
+  const p = formatToolPreview('edit_file', { path: f, old_string: 'TARGET', new_string: 'X' }, { colors: true });
+  assert.match(p, /│ 4 /); // TARGET sits on line 4
+});
+
+test('formatToolPreview falls back to the plain preview without colors', () => {
+  const p = formatToolPreview('write_file', { path: 'a', content: 'b' }, { colors: false });
+  assert.match(p, /write_file → a/);
+  assert.doesNotMatch(p, /╭/);
+});
+
+test('highlighter pads fences with blank lines next to prose', () => {
+  const h = new CodeHighlighter({ enabled: true });
+  const out = h.highlight('Here is the code:\n```js\nx\n```\nDone.\n');
+  assert.match(out, /Here is the code:\n\n/); // blank line before the opening rule
+  assert.match(out, /╰─+[^\n]*\n\nDone\./); // blank line after the closing rule
+});
+
+test('highlighter adds no extra padding when blank lines already exist', () => {
+  const h = new CodeHighlighter({ enabled: true });
+  const out = h.highlight('Prose.\n\n```js\nx\n```\n');
+  assert.doesNotMatch(out, /Prose\.\n\n\n/); // no doubled padding
 });
 
 const mm = (over = {}) => ({ index: 0, count: 4, checked: [], done: false, cancelled: false, ...over });
