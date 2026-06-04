@@ -151,6 +151,8 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
     });
     let reasoningStarted = 0;
     let reasoningSeconds = -1;
+    let assistantText = '';
+    const toolsCalled = [];
     spinner.start('thinking...');
     try {
       await runTurn({
@@ -160,6 +162,7 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
         tools,
         permissions,
         onText: (t) => {
+          assistantText += t;
           spinner.stop();
           writeModelText(t);
         },
@@ -173,6 +176,7 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
           spinner.update(`reasoning... (${s}s)`);
         },
         onToolStart: (name, args) => {
+          toolsCalled.push(name);
           reasoningStarted = 0;
           reasoningSeconds = -1;
           spinner.stop();
@@ -190,6 +194,9 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
       writeModelText.flush();
       process.stdout.write(highlighter.flush());
       console.log();
+      if (claimsUnappliedChanges(assistantText, toolsCalled)) {
+        console.log(yellow('⚠ the model described changes but did not modify any files — ask it to apply them using its tools'));
+      }
     } catch (err) {
       const hint = err.status === 429 || err.status >= 500 ? ' — all models in your chain failed; try /model' : '';
       console.error(`\n${red(`[error] ${err.message}`)}${hint}`);
@@ -199,6 +206,19 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
   }
 
   rl.close();
+}
+
+const WRITE_TOOLS = new Set(['write_file', 'edit_file']);
+const CLAIM_RE = /\bI(?:'ve| have)? (?:added|updated|edited|created|fixed|changed|wrote|applied)\b/i;
+
+/**
+ * True when the assistant's reply reads like it applied changes (claim language
+ * + a fenced code block) but no write/edit tool ran this turn.
+ */
+export function claimsUnappliedChanges(text, toolNames) {
+  if (toolNames.some((n) => WRITE_TOOLS.has(n))) return false;
+  if (!text.includes('```')) return false;
+  return CLAIM_RE.test(text);
 }
 
 export function createEchoSuppressor(input, write) {
