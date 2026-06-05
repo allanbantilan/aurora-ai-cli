@@ -5,7 +5,6 @@ import { createPermissions } from './permissions.js';
 import { systemPrompt } from './prompt.js';
 import { fetchModelStatus } from './client.js';
 import {
-  promptLabel,
   statusLine,
   createSpinner,
   CodeHighlighter,
@@ -16,6 +15,8 @@ import {
   shortModelName,
   modelCategory,
   interactiveEnabled,
+  legacyConhost,
+  cyan,
   yellow,
   magenta,
   red,
@@ -161,9 +162,12 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
 
   console.log(`\naurora — model: ${chainLabel()}\nType a request, or /help for commands.`);
 
+  const rule = () => dim((legacyConhost ? '-' : '─').repeat(process.stdout.columns || 80));
+
   while (true) {
-    console.log(`\n${statusLine(process.cwd(), chain, { pct: ctxPct() })}`);
-    const input = (await rl.question(promptLabel())).trim();
+    console.log(`\n${rule()}`);
+    const input = (await rl.question(`${cyan('❯')} `)).trim();
+    console.log(`${rule()}\n  ${statusLine(process.cwd(), chain, { pct: ctxPct() })}`);
     if (!input) continue;
 
     if (input === '/exit') break;
