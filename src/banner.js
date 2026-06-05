@@ -1,4 +1,4 @@
-import { colorEnabled } from './ui.js';
+import { colorEnabled, shortModelName } from './ui.js';
 
 /** Visual length: strip ANSI escape codes before measuring. */
 function vlen(s) {
@@ -11,88 +11,81 @@ function vpad(s, w) {
   return n > 0 ? s + ' '.repeat(n) : s;
 }
 
-const c = (code) => colorEnabled ? `\x1b[${code}m` : '';
+const c = (code) => (colorEnabled ? `\x1b[${code}m` : '');
 const R   = c('0');
-const CY  = c('96');       // bright cyan
-const WH  = c('97');       // bright white
-const DIM = c('2');        // dim
-const GR  = c('92');       // bright green
-const RED = c('91');       // bright red
-const BCY = c('1;96');     // bold bright cyan
+const CY  = c('96');     // bright cyan
+const WH  = c('97');     // bright white
+const DIM = c('2');      // dim
+const GR  = c('92');     // bright green
+const RED = c('91');     // bright red
+const BCY = c('1;96');   // bold bright cyan
+const BWH = c('1;97');   // bold bright white
 
-const QW = 68;   // queen panel visual width
-const PW = 47;   // info panel inner width (between │ chars)
+const QW = 46; // queen panel visual width
 
 function queenArt() {
   return [
-    `          ${WH}*    ${CY}❄${WH}    *        *    ${CY}❄${WH}    *${R}`,
-    `         ${WH}/|\\  /|\\  /|\\      /|\\  /|\\  /|\\${R}`,
-    `        ${WH}/ | \\/ | \\/ | \\    / | \\/ | \\/ | \\${R}`,
-    `   ${CY}❄  ${WH}*|  ${CY}❄    ${WH}\\${CY}❄${WH}  /  \\  ${CY}❄${WH}  /  ${CY}❄${WH}    |*  ${CY}❄${R}`,
-    `        ${WH}\\____________________________/${R}`,
-    `               ${WH}\\                /${R}`,
-    `            ${WH}(   \\______________/   )${R}`,
-    `           ${WH}/   ________________   \\${R}`,
-    `          ${WH}| / ${CY}◈${WH}              ${CY}◈${WH}  \\ |${R}`,
-    `          ${WH}| |      __________     | |${R}`,
-    `          ${WH}| |     /          \\    | |${R}`,
-    `          ${WH}| |    (  ${CY}›${WH}      ${CY}‹${WH}  )   | |${R}`,
-    `          ${WH}| |     \\__________/    | |${R}`,
-    `          ${WH}|  \\                   /  |${R}`,
-    `          ${WH}|   \\________________/    |${R}`,
-    `        ${DIM}░░${R}${WH}▒▒|                    |▒▒${DIM}░░${R}`,
-    `       ${DIM}░${R}${WH}▒▓███|____________________|███▓▒${DIM}░${R}`,
-    `      ${DIM}░${R}${WH}▒▓████ \\                  / ████▓▒${DIM}░${R}`,
-    `     ${DIM}░${R}${WH}▒▓█████  \\________________/  █████▓▒${DIM}░${R}`,
-    `    ${DIM}░░${R}${WH}▒▓██████${CY}░░░░░░░░░░░░░░░░${WH}██████▓▒${DIM}░░${R}`,
-  ].map(line => vpad(line, QW));
+    `${CY}        ❄${WH}      *      ${CY}❄${WH}      *      ${CY}❄${R}`,
+    `${BWH}            /\\     /\\     /\\${R}`,
+    `${BWH}           /  \\   /  \\   /  \\${R}`,
+    `${BWH}          / ${CY}❄${BWH}  \\ / ${CY}❄${BWH}  \\ / ${CY}❄${BWH}  \\${R}`,
+    `${BWH}         |::::::::::::::::::::|${R}`,
+    `${WH}          \\                  /${R}`,
+    `${WH}           |   ${CY}<>${WH}      ${CY}<>${WH}   |${R}`,
+    `${WH}           |                |${R}`,
+    `${WH}            \\      ${CY}──${WH}      /${R}`,
+    `${WH}             \\______________/${R}`,
+    `${WH}             /      ||      \\${R}`,
+    `${WH}           /   ${DIM}░${R}${WH}    ||    ${DIM}░${R}${WH}   \\${R}`,
+    `${WH}          /   ${DIM}▒░${R}${WH}    ||    ${DIM}░▒${R}${WH}   \\${R}`,
+    `${WH}         /   ${DIM}▓▒░${R}${WH} ${CY}❄${WH}  ||  ${CY}❄${WH} ${DIM}░▒▓${R}${WH}   \\${R}`,
+    `${WH}        /   ${DIM}█▓▒░${R}${WH}____||____${DIM}░▒▓█${R}${WH}   \\${R}`,
+    `${WH}       /__${DIM}░▒▓████████████████▓▒░${R}${WH}__\\${R}`,
+    `${CY}      ❄        ${DIM}~ a u r o r a ~${R}${CY}        ❄${R}`,
+  ].map((line) => vpad(line, QW));
 }
 
-function infoPanel({ model, fallbacks, status }) {
-  const shortModel = model.split('/').pop().replace(/:free$/, '') || model;
-  const fallStr    = fallbacks > 0 ? `+${fallbacks}` : 'none';
-  const dot        = status === 'online' ? `${GR}●${R}` : `${RED}●${R}`;
+function infoPanel({ chain, status }) {
+  const head = chain[0] ? shortModelName(chain[0]) : '—';
+  const falls = chain.slice(1).map(shortModelName);
+  const dot = status === 'online' ? `${GR}●${R}` : `${RED}●${R}`;
 
-  const BRD = `${DIM}│${R}`;
-  const top = `${DIM}┌${'─'.repeat(PW)}┐${R}`;
-  const bot = `${DIM}└${'─'.repeat(PW)}┘${R}`;
-  const row = (s) => `${BRD}${vpad(s, PW)}${BRD}`;
+  const inner = [];
+  inner.push(`  ${BCY}✦  A U R O R A${R}`);
+  inner.push('');
+  inner.push(`  ${DIM}model    ${R} ${WH}${head}${R} ${dot}`);
+  if (falls.length) {
+    inner.push(`  ${DIM}fallback ${R} ${WH}${falls[0]}${R}`);
+    for (const f of falls.slice(1)) inner.push(`  ${DIM}         ${R} ${WH}${f}${R}`);
+  } else {
+    inner.push(`  ${DIM}fallback ${R} ${DIM}none${R}`);
+  }
+  inner.push(`  ${DIM}status   ${R} ${WH}${status}${R}`);
+  inner.push('');
+  inner.push(`  ${CY}❄${R}  ${DIM}type a request, or${R} ${WH}/help${R} ${DIM}for commands${R}`);
 
-  return [
-    '',
-    '',
-    '',
-    top,
-    row(`  ${BCY}✦  A U R O R A${R}`),
-    row(''),
-    row(`  ${DIM}model    ${R}: ${WH}${shortModel}${R}`),
-    row(`  ${DIM}fallbacks${R}: ${WH}${fallStr}${R}`),
-    row(`  ${DIM}status   ${R}: ${WH}${status} ${dot}`),
-    row(`  ${DIM}session  ${R}: ${CY}00:00:00${R}`),
-    row(''),
-    row(`  ${DIM}❄  cold . precise . alive  ❄${R}`),
-    bot,
-    '',
-    '',
-    '',
-    '',
-    '',
-    '',
-    '',
-  ];
+  const pw = Math.max(40, ...inner.map(vlen)) + 2;
+  const top = `${DIM}┌${'─'.repeat(pw)}┐${R}`;
+  const bot = `${DIM}└${'─'.repeat(pw)}┘${R}`;
+  const brd = `${DIM}│${R}`;
+
+  return [top, ...inner.map((s) => `${brd}${vpad(s, pw)}${brd}`), bot];
 }
 
-export function printBanner({ model = '—', fallbacks = 0, status = 'online' } = {}) {
+export function printBanner({ chain = [], status = 'online' } = {}) {
   const queen = queenArt();
-  const panel = infoPanel({ model, fallbacks, status });
-  const n = Math.max(queen.length, panel.length);
+  const panel = infoPanel({ chain, status });
+
+  // vertically center the panel beside the queen
+  const offset = Math.max(0, Math.floor((queen.length - panel.length) / 2));
+  const n = Math.max(queen.length, panel.length + offset);
 
   const lines = [];
   for (let i = 0; i < n; i++) {
     const q = queen[i] ?? ' '.repeat(QW);
-    const p = panel[i] ?? '';
-    lines.push(`${q}  ${p}`);
+    const p = i >= offset ? panel[i - offset] ?? '' : '';
+    lines.push((q + '   ' + p).trimEnd());
   }
 
-  process.stdout.write('\n' + lines.join('\n') + '\n\n');
+  process.stdout.write('\n' + lines.join('\n') + '\n');
 }

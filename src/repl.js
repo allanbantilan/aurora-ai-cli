@@ -150,11 +150,7 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
     },
   };
 
-  printBanner({
-    model: chain[0] ?? '—',
-    fallbacks: Math.max(0, chain.length - 1),
-    status: 'online',
-  });
+  printBanner({ chain, status: 'online' });
 
   const ch = legacyConhost ? '-' : '─';
   const rule = () => dim(ch.repeat(process.stdout.columns || 80));
