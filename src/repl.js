@@ -172,13 +172,19 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
 
   console.log(`\naurora — model: ${chainLabel()}\nType a request, or /help for commands.`);
 
-  const rule = () => dim((legacyConhost ? '-' : '─').repeat(process.stdout.columns || 80));
+  const ch = legacyConhost ? '-' : '─';
+  const rule = () => dim(ch.repeat(process.stdout.columns || 80));
+  const ruledStatus = () => {
+    const info = ` ${shortModelName(chain[0])}${chain.length > 1 ? ` +${chain.length - 1}` : ''}${ctxPct() !== null ? ` · ctx: ${Math.round(ctxPct())}%` : ''} `;
+    const cols = process.stdout.columns || 80;
+    const half = Math.max(0, Math.floor((cols - info.length) / 2));
+    return dim(ch.repeat(half) + info + ch.repeat(Math.max(0, cols - half - info.length)));
+  };
 
   while (true) {
     console.log(`\n${rule()}`);
     const input = (await rl.question(`${cyan('❯')} `)).trim();
-    console.log(rule());
-    console.log(`  ${statusLine(process.cwd(), chain, { pct: ctxPct() })}`);
+    console.log(ruledStatus());
     if (!input) continue;
 
     if (input === '/exit') break;
