@@ -69,9 +69,10 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
       if (!rows) return;
       process.stdout.write(
         `\x1B[1;${rows - 1}r` +    // set scroll region rows 1..N-1
+        '\x1B[2J' +                 // clear screen — no blank-gap from old PS content
         `\x1B[${rows};1H\x1B[2K` + // move to last row, clear, write status
         this._text() +
-        `\x1B[${rows - 1};1H`      // cursor at bottom of scroll region — content builds upward
+        `\x1B[${rows - 1};1H`      // cursor at bottom of scroll region (not home — avoids double prompt)
       );
     },
     reset() {
