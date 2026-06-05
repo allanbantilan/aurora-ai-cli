@@ -175,8 +175,7 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
   const rule = () => dim((legacyConhost ? '-' : '─').repeat(process.stdout.columns || 80));
 
   while (true) {
-    console.log(`\n  ${statusLine(process.cwd(), chain, { pct: ctxPct() })}`);
-    console.log(rule());
+    console.log(`\n${rule()}`);
     const input = (await rl.question(`${cyan('❯')} `)).trim();
     console.log(rule());
     if (!input) continue;
@@ -261,6 +260,7 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
       writeModelText.flush();
       process.stdout.write(highlighter.flush());
       console.log();
+      console.log(`\n  ${statusLine(process.cwd(), chain, { pct: ctxPct() })}`);
       if (claimsUnappliedChanges(assistantText, toolsExecuted)) {
         console.log(yellow('⚠ the model described changes but did not modify any files — ask it to apply them using its tools'));
       }
