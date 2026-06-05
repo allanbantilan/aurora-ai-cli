@@ -5,7 +5,6 @@ import { createPermissions } from './permissions.js';
 import { systemPrompt } from './prompt.js';
 import { fetchModelStatus } from './client.js';
 import {
-  statusLine,
   createSpinner,
   CodeHighlighter,
   selectMenu,
@@ -122,12 +121,6 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
 
   let messages = [{ role: 'system', content: systemPrompt(process.cwd()) }];
 
-  let lastPromptTokens = null;
-  /** % of the active model's context window used, or null when unknown. */
-  const ctxPct = () => {
-    const ctxLen = models.find((m) => m.id === chain[0])?.context;
-    return lastPromptTokens !== null && ctxLen ? (lastPromptTokens / ctxLen) * 100 : null;
-  };
 
   const permissions = createPermissions(async (toolName, args) => {
     spinner.stop();
@@ -174,17 +167,11 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
 
   const ch = legacyConhost ? '-' : '─';
   const rule = () => dim(ch.repeat(process.stdout.columns || 80));
-  const ruledStatus = () => {
-    const info = ` ${shortModelName(chain[0])}${chain.length > 1 ? ` +${chain.length - 1}` : ''}${ctxPct() !== null ? ` · ctx: ${Math.round(ctxPct())}%` : ''} `;
-    const cols = process.stdout.columns || 80;
-    const half = Math.max(0, Math.floor((cols - info.length) / 2));
-    return dim(ch.repeat(half) + info + ch.repeat(Math.max(0, cols - half - info.length)));
-  };
 
   while (true) {
     console.log(`\n${rule()}`);
     const input = (await rl.question(`${cyan('❯')} `)).trim();
-    console.log(ruledStatus());
+    console.log(rule());
     if (!input) continue;
 
     if (input === '/exit') break;
@@ -253,9 +240,6 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
         },
         onRetry: (attempt, retries, delayMs) =>
           spinner.update(`rate-limited, retrying in ${delayMs / 1000}s (${attempt}/${retries})...`),
-        onUsage: (u) => {
-          if (typeof u?.prompt_tokens === 'number') lastPromptTokens = u.prompt_tokens;
-        },
         onModelSwitch: (from, to) => {
           spinner.stop();
           console.log(yellow(`⚠ ${shortModelName(from)} unavailable — switched to ${shortModelName(to)}`));
