@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createEchoSuppressor, claimsUnappliedChanges, completeCommand, commandList, promoteModel, sbRows } from '../src/repl.js';
+import { createEchoSuppressor, claimsUnappliedChanges, completeCommand, commandList, promoteModel } from '../src/repl.js';
 
 test('createEchoSuppressor drops an exact first-line echo of the user input', () => {
   let out = '';
@@ -109,23 +109,3 @@ test('promoteModel keeps unrelated models in order', () => {
   assert.deepEqual(promoteModel(['a', 'b', 'c', 'd'], 'b', 'c'), ['c', 'a', 'd']);
 });
 
-test('sbRows returns a positive integer from a mock stdout with .rows', () => {
-  const fake = { rows: 40 };
-  assert.equal(sbRows(fake), 40);
-});
-
-test('sbRows falls back to getWindowSize when .rows is undefined', () => {
-  const fake = { rows: undefined, getWindowSize: () => [120, 35] };
-  assert.equal(sbRows(fake), 35);
-});
-
-test('sbRows returns undefined when both sources are unavailable', () => {
-  assert.equal(sbRows({}), undefined);
-  assert.equal(sbRows({ rows: undefined }), undefined);
-  assert.equal(sbRows({ rows: undefined, getWindowSize: () => [0, 0] }), undefined);
-});
-
-test('sbRows falls back to getWindowSize when .rows is 0', () => {
-  const fake = { rows: 0, getWindowSize: () => [120, 40] };
-  assert.equal(sbRows(fake), 40);
-});

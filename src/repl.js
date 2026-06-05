@@ -40,52 +40,12 @@ export function commandList() {
   return COMMANDS.map(([c, d]) => `${c.padEnd(7)} ${d}`).join('\n');
 }
 
-/** Read terminal row count from stdout, with a Windows-compatible fallback. */
-export function sbRows(stdout = process.stdout) {
-  return stdout.rows || stdout.getWindowSize?.()[1] || undefined;
-}
-
 export async function startRepl({ client, models, initialChain, saveModels }) {
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout, completer: completeCommand });
-
-  // Persistent bottom status bar via scroll region (VT220). Works in Windows
-  // Terminal, VS Code, PowerShell 7+, macOS, Linux. Falls back to no-op when
-  // the terminal reports no row count (piped / legacy conhost).
-  const sb = {
-    _text() {
-      const sep = '·';
-      const model = shortModelName(chain[0]) + (chain.length > 1 ? ` +${chain.length - 1}` : '');
-      const pct = ctxPct();
-      const ctx = pct !== null ? ` ${sep} ctx: ${Math.round(pct)}%` : '';
-      return `  ${process.cwd()} ${sep} ${model}${ctx}`;
-    },
-    draw() {
-      const rows = !legacyConhost && interactiveEnabled && sbRows();
-      if (!rows) return;
-      process.stdout.write('\x1B[s' + `\x1B[${rows};1H\x1B[2K` + this._text() + '\x1B[u');
-    },
-    init() {
-      const rows = !legacyConhost && interactiveEnabled && sbRows();
-      if (!rows) return;
-      process.stdout.write(
-        `\x1B[1;${rows - 1}r` +    // set scroll region rows 1..N-1
-        '\x1B[2J' +                 // clear screen — no blank-gap from old PS content
-        `\x1B[${rows};1H\x1B[2K` + // move to last row, clear, write status
-        this._text() +
-        `\x1B[${rows - 1};1H`      // cursor at bottom of scroll region (not home — avoids double prompt)
-      );
-    },
-    reset() {
-      const rows = !legacyConhost && interactiveEnabled && sbRows();
-      if (!rows) return;
-      process.stdout.write(`\x1B[r\x1B[s\x1B[${rows};1H\x1B[2K\x1B[u`);
-    },
-  };
 
   // readline intercepts Ctrl+C and emits SIGINT on the interface; without this
   // listener the process can never be interrupted (it just pauses stdin).
   rl.on('SIGINT', () => {
-    sb.reset();
     console.log('\n(interrupted — exiting)');
     rl.close();
     process.exit(0);
@@ -93,7 +53,7 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
 
   // Ctrl+D / piped stdin ending closes the interface; exit instead of
   // crashing on the next rl.question (ERR_USE_AFTER_CLOSE).
-  rl.on('close', () => { sb.reset(); process.exit(0); });
+  rl.on('close', () => process.exit(0));
 
   const spinner = createSpinner();
 
@@ -150,15 +110,6 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
   }
 
   let messages = [{ role: 'system', content: systemPrompt(process.cwd()) }];
-
-  let lastPromptTokens = null;
-  const ctxPct = () => {
-    const ctxLen = models.find((m) => m.id === chain[0])?.context;
-    return lastPromptTokens !== null && ctxLen ? (lastPromptTokens / ctxLen) * 100 : null;
-  };
-
-  sb.init();
-  process.stdout.on('resize', () => sb.init());
 
   const permissions = createPermissions(async (toolName, args) => {
     spinner.stop();
@@ -281,19 +232,12 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
         },
         onRetry: (attempt, retries, delayMs) =>
           spinner.update(`rate-limited, retrying in ${delayMs / 1000}s (${attempt}/${retries})...`),
-        onUsage: (u) => {
-          if (typeof u?.prompt_tokens === 'number') {
-            lastPromptTokens = u.prompt_tokens;
-            sb.draw();
-          }
-        },
         onModelSwitch: (from, to) => {
           spinner.stop();
           console.log(yellow(`⚠ ${shortModelName(from)} unavailable — switched to ${shortModelName(to)}`));
           spinner.start('thinking...');
           chain = promoteModel(chain, from, to);
           saveModels(chain);
-          sb.draw();
         },
       });
       writeModelText.flush();
