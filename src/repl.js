@@ -115,7 +115,7 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
   /** % of the active model's context window used, or null when unknown. */
   const ctxPct = () => {
     const ctxLen = models.find((m) => m.id === chain[0])?.context;
-    return lastPromptTokens && ctxLen ? (lastPromptTokens / ctxLen) * 100 : null;
+    return lastPromptTokens !== null && ctxLen ? (lastPromptTokens / ctxLen) * 100 : null;
   };
 
   const permissions = createPermissions(async (toolName, args) => {
