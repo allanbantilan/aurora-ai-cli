@@ -180,7 +180,6 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
         saveModels(chain);
       }
       console.log(dim(`model chain: ${chain.map(shortModelName).join(' → ')}`));
-      sb.draw();
       continue;
     }
     if (input.startsWith('/')) {
