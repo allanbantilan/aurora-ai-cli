@@ -173,13 +173,7 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
   const ch = legacyConhost ? '-' : '─';
   const sep = legacyConhost ? '|' : '·';
   const rule = () => dim(ch.repeat(process.stdout.columns || 80));
-  const prompt = () => {
-    const dir = process.cwd().split(/[\\/]/).pop() || process.cwd();
-    const model = shortModelName(chain[0]) + (chain.length > 1 ? ` +${chain.length - 1}` : '');
-    const pct = ctxPct();
-    const ctx = pct !== null ? ` ${sep} ${Math.round(pct)}%` : '';
-    return `${dim(`${dir} ${sep} ${model}${ctx}`)} ${cyan('❯')} `;
-  };
+  const prompt = () => `${dim(process.cwd())} ${cyan('❯')} `;
 
   while (true) {
     console.log(`\n${rule()}`);
