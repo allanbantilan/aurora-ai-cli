@@ -111,6 +111,13 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
 
   let messages = [{ role: 'system', content: systemPrompt(process.cwd()) }];
 
+  let lastPromptTokens = null;
+  /** % of the active model's context window used, or null when unknown. */
+  const ctxPct = () => {
+    const ctxLen = models.find((m) => m.id === chain[0])?.context;
+    return lastPromptTokens && ctxLen ? (lastPromptTokens / ctxLen) * 100 : null;
+  };
+
   const permissions = createPermissions(async (toolName, args) => {
     spinner.stop();
     console.log(`\n${yellow('[permission required]')}\n${formatToolPreview(toolName, args)}\n`);
@@ -155,7 +162,7 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
   console.log(`\naurora — model: ${chainLabel()}\nType a request, or /help for commands.`);
 
   while (true) {
-    console.log(`\n${statusLine(process.cwd(), chain)}`);
+    console.log(`\n${statusLine(process.cwd(), chain, { pct: ctxPct() })}`);
     const input = (await rl.question(promptLabel())).trim();
     if (!input) continue;
 
@@ -166,6 +173,7 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
     }
     if (input === '/clear') {
       messages = [messages[0]];
+      lastPromptTokens = null;
       console.log('(conversation cleared)');
       continue;
     }
@@ -219,9 +227,14 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
         },
         onRetry: (attempt, retries, delayMs) =>
           spinner.update(`rate-limited, retrying in ${delayMs / 1000}s (${attempt}/${retries})...`),
+        onUsage: (u) => {
+          if (typeof u?.prompt_tokens === 'number') lastPromptTokens = u.prompt_tokens;
+        },
         onModelSwitch: (from, to) => {
-          spinner.update(`${shortModelName(from)} unavailable — switching to ${shortModelName(to)}...`);
-          chain = [to, ...chain.filter((id) => id !== from && id !== to), from];
+          spinner.stop();
+          console.log(yellow(`⚠ ${shortModelName(from)} unavailable — switched to ${shortModelName(to)}`));
+          spinner.start('thinking...');
+          chain = promoteModel(chain, from, to);
           saveModels(chain);
         },
       });
@@ -252,6 +265,14 @@ const CLAIM_RE = new RegExp(
   `(?:\\b(?:I|we)(?:'ve| have)? |(?:^|[.!?]\\s+)\\**)(?:${CLAIM_VERBS})\\b`,
   'im'
 );
+
+/**
+ * Fallback promotion: `to` becomes the active head, `from` leaves the chain
+ * (restorable via /model). Decrements the displayed fallback count.
+ */
+export function promoteModel(chain, from, to) {
+  return [to, ...chain.filter((id) => id !== from && id !== to)];
+}
 
 /**
  * True when the assistant's reply reads like it applied changes but no

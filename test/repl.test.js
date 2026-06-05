@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createEchoSuppressor, claimsUnappliedChanges, completeCommand, commandList } from '../src/repl.js';
+import { createEchoSuppressor, claimsUnappliedChanges, completeCommand, commandList, promoteModel } from '../src/repl.js';
 
 test('createEchoSuppressor drops an exact first-line echo of the user input', () => {
   let out = '';
@@ -99,4 +99,12 @@ test('completeCommand returns no hits for non-command input', () => {
 test('commandList includes every command with a description', () => {
   const text = commandList();
   for (const c of ['/model', '/clear', '/help', '/exit']) assert.match(text, new RegExp(c.replace('/', '\\/')));
+});
+
+test('promoteModel puts the fallback first and drops the failed model', () => {
+  assert.deepEqual(promoteModel(['a', 'b', 'c'], 'a', 'b'), ['b', 'c']);
+});
+
+test('promoteModel keeps unrelated models in order', () => {
+  assert.deepEqual(promoteModel(['a', 'b', 'c', 'd'], 'b', 'c'), ['c', 'a', 'd']);
 });
