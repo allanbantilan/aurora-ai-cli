@@ -52,25 +52,29 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
   // Terminal, VS Code, PowerShell 7+, macOS, Linux. Falls back to no-op when
   // the terminal reports no row count (piped / legacy conhost).
   const sb = {
-    draw() {
-      const rows = !legacyConhost && interactiveEnabled && sbRows();
-      if (!rows) return;
+    _text() {
       const sep = '·';
       const model = shortModelName(chain[0]) + (chain.length > 1 ? ` +${chain.length - 1}` : '');
       const pct = ctxPct();
       const ctx = pct !== null ? ` ${sep} ctx: ${Math.round(pct)}%` : '';
-      process.stdout.write(
-        '\x1B[s' +
-        `\x1B[${rows};1H\x1B[2K` +
-        `  ${process.cwd()} ${sep} ${model}${ctx}` +
-        '\x1B[u'
-      );
+      return `  ${process.cwd()} ${sep} ${model}${ctx}`;
+    },
+    draw() {
+      const rows = !legacyConhost && interactiveEnabled && sbRows();
+      if (!rows) return;
+      process.stdout.write('\x1B[s' + `\x1B[${rows};1H\x1B[2K` + this._text() + '\x1B[u');
     },
     init() {
       const rows = !legacyConhost && interactiveEnabled && sbRows();
       if (!rows) return;
-      process.stdout.write(`\x1B[1;${rows - 1}r`);
-      this.draw();
+      // Single atomic write: scroll region + clear screen + status bar + home cursor
+      process.stdout.write(
+        `\x1B[1;${rows - 1}r` +  // set scroll region
+        '\x1B[2J' +               // clear screen (prevents old PS content bleeding through)
+        `\x1B[${rows};1H\x1B[2K` + // move to last row, write status
+        this._text() +
+        '\x1B[1;1H'               // explicit home — no save/restore ambiguity
+      );
     },
     reset() {
       const rows = !legacyConhost && interactiveEnabled && sbRows();
