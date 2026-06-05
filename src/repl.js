@@ -43,8 +43,7 @@ export function commandList() {
 
 /** Read terminal row count from stdout, with a Windows-compatible fallback. */
 export function sbRows(stdout = process.stdout) {
-  const r = stdout.rows ?? stdout.getWindowSize?.()[1];
-  return r || undefined; // treat 0 as unavailable
+  return stdout.rows || stdout.getWindowSize?.()[1] || undefined;
 }
 
 export async function startRepl({ client, models, initialChain, saveModels }) {

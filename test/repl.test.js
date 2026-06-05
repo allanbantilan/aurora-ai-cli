@@ -124,3 +124,8 @@ test('sbRows returns undefined when both sources are unavailable', () => {
   assert.equal(sbRows({ rows: undefined }), undefined);
   assert.equal(sbRows({ rows: undefined, getWindowSize: () => [0, 0] }), undefined);
 });
+
+test('sbRows falls back to getWindowSize when .rows is 0', () => {
+  const fake = { rows: 0, getWindowSize: () => [120, 40] };
+  assert.equal(sbRows(fake), 40);
+});
