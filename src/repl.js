@@ -180,11 +180,12 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
         return (await rl.question(prompt(), { signal: ac.signal })).trim();
       } catch (err) {
         if (err.name !== 'AbortError') throw err;
-        // user typed "/": clear readline's buffer and the echoed prompt line,
-        // then hand the keyboard to the search menu
+        // user typed "/": readline's abort cleanup printed "\r\n", leaving the
+        // echoed "prompt /" line above the cursor — move up and erase it, then
+        // hand the keyboard to the search menu
         rl.line = '';
         rl.cursor = 0;
-        process.stdout.write('\r\x1B[2K');
+        process.stdout.write('\x1B[1A\r\x1B[2K');
         const picked = await slashMenu(rl, COMMANDS);
         if (picked) {
           console.log(`${prompt()}${picked}`); // leave a record as if the user typed it
