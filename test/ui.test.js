@@ -317,7 +317,7 @@ test('formatModelStatus formats health buckets', () => {
 
 test('statusLine shows user@host:cwd, short model name and fallback count', () => {
   const line = statusLine('C:\\projects\\demo', ['deepseek/deepseek-chat:free', 'qwen/qwen3-coder:free', 'z-ai/glm-4.5-air:free']);
-  assert.match(line, new RegExp(`${os.userInfo().username}@${os.hostname()}:`));
+  assert.ok(line.includes(`${os.userInfo().username}@${os.hostname()}:`), 'should contain user@host:');
   assert.match(line, /C:\\projects\\demo/);
   assert.match(line, /deepseek-chat/); // short name…
   assert.doesNotMatch(line, /deepseek\/deepseek-chat:free/); // …not the full id
