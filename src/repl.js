@@ -9,6 +9,7 @@ import {
   createSpinner,
   CodeHighlighter,
   selectMenu,
+  slashMenu,
   multiSelectMenu,
   formatModelStatus,
   formatToolPreview,
@@ -156,22 +157,45 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
   const rule = () => dim(ch.repeat(process.stdout.columns || 80));
   const prompt = () => `${dim(process.cwd())} ${cyan('❯')} `;
 
+  /**
+   * Read one line of input. In interactive mode, typing "/" as the first
+   * character aborts the pending question and opens the live searchable
+   * command menu (Claude-Code style); picking a command returns it as if typed.
+   */
+  const readInput = async () => {
+    for (;;) {
+      if (!interactiveEnabled) return (await rl.question(prompt())).trim();
+      const ac = new AbortController();
+      const watch = () => {
+        if (rl.line === '/' && rl.cursor === 1) ac.abort();
+      };
+      process.stdin.on('keypress', watch);
+      try {
+        return (await rl.question(prompt(), { signal: ac.signal })).trim();
+      } catch (err) {
+        if (err.name !== 'AbortError') throw err;
+        // user typed "/": clear readline's buffer and the echoed prompt line,
+        // then hand the keyboard to the search menu
+        rl.line = '';
+        rl.cursor = 0;
+        process.stdout.write('\r\x1B[2K');
+        const picked = await slashMenu(rl, COMMANDS);
+        if (picked) {
+          console.log(`${prompt()}${picked}`); // leave a record as if the user typed it
+          return picked;
+        }
+        // cancelled — fall through and re-prompt
+      } finally {
+        process.stdin.removeListener('keypress', watch);
+      }
+    }
+  };
+
   while (true) {
     console.log(`\n${rule()}`);
-    let input = (await rl.question(prompt())).trim();
+    const input = await readInput();
     console.log(rule());
     if (!input) continue;
-
-    // bare "/" opens the command menu: ↑↓/Tab to move, Enter/digit to select
-    if (input === '/' && interactiveEnabled) {
-      const picked = await selectMenu(rl, 'Commands (↑↓ or Tab, Enter to select):', [
-        ...COMMANDS.map(([cmd, desc]) => ({ label: `${cmd.padEnd(7)} ${desc}`, value: cmd })),
-        { label: 'cancel', value: '', isEscape: true },
-      ]);
-      if (!picked) continue;
-      console.log(dim(picked));
-      input = picked;
-    }
 
     if (input === '/exit') break;
     if (input === '/' || input === '/help') {

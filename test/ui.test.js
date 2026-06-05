@@ -10,6 +10,8 @@ import { CodeHighlighter } from '../src/ui.js';
 import {
   menuReduce,
   selectMenu,
+  slashMenuReduce,
+  slashMatches,
   multiMenuReduce,
   formatModelStatus,
   statusLine,
@@ -98,6 +100,50 @@ test('menuReduce moves and wraps with arrow keys', () => {
   assert.equal(s.index, 2); // wrapped from 0 to last
   s = menuReduce(s, { name: 'down' });
   assert.equal(s.index, 0); // wrapped back to first
+});
+
+const CMDS = [['/model', 'select models'], ['/clear', 'reset conversation'], ['/help', 'show help'], ['/exit', 'quit']];
+const sm = (over = {}) => ({ all: CMDS, filter: '/', index: 0, done: false, cancelled: false, picked: null, ...over });
+
+test('slashMenuReduce filters live as the user types', () => {
+  let s = sm();
+  s = slashMenuReduce(s, { name: 'm' }, 'm');
+  assert.equal(s.filter, '/m');
+  assert.deepEqual(slashMatches(s.all, s.filter).map(([c]) => c), ['/model']);
+  s = slashMenuReduce(s, { name: 'return' });
+  assert.deepEqual([s.done, s.picked], [true, '/model']);
+});
+
+test('slashMenuReduce enter picks the highlighted command', () => {
+  let s = sm();
+  s = slashMenuReduce(s, { name: 'down' });
+  s = slashMenuReduce(s, { name: 'return' });
+  assert.equal(s.picked, '/clear');
+});
+
+test('slashMenuReduce tab cycles within the filtered set', () => {
+  let s = sm();
+  s = slashMenuReduce(s, { name: 'tab' });
+  assert.equal(s.index, 1);
+  s = slashMenuReduce(s, { name: 'tab', shift: true });
+  assert.equal(s.index, 0);
+});
+
+test('slashMenuReduce backspace past "/" cancels', () => {
+  const s = slashMenuReduce(sm(), { name: 'backspace' });
+  assert.deepEqual([s.done, s.cancelled], [true, true]);
+});
+
+test('slashMenuReduce backspace shrinks the filter and resets selection', () => {
+  let s = sm({ filter: '/mo', index: 0 });
+  s = slashMenuReduce(s, { name: 'backspace' });
+  assert.equal(s.filter, '/m');
+  assert.equal(s.done, false);
+});
+
+test('slashMenuReduce enter with no matches cancels', () => {
+  const s = slashMenuReduce(sm({ filter: '/zzz' }), { name: 'return' });
+  assert.deepEqual([s.done, s.cancelled], [true, true]);
 });
 
 test('menuReduce cycles with tab and back with shift-tab', () => {

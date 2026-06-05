@@ -319,6 +319,94 @@ export function selectMenu(rl, title, options) {
   });
 }
 
+/** Commands matching the typed filter (prefix match on the command name). */
+export function slashMatches(all, filter) {
+  return all.filter(([cmd]) => cmd.startsWith(filter));
+}
+
+/**
+ * Pure keypress → state transition for the searchable slash-command menu.
+ * state: { all: [[cmd, desc]], filter: '/...', index, done, cancelled, picked }.
+ * Printable keys extend the filter (live search); backspace shrinks it —
+ * backspacing past "/" cancels back to the normal prompt.
+ */
+export function slashMenuReduce(state, key = {}, str = '') {
+  const visible = slashMatches(state.all, state.filter);
+  const count = visible.length;
+  const cur = Math.min(state.index, Math.max(0, count - 1));
+  if (key.name === 'escape') return { ...state, done: true, cancelled: true };
+  if (key.name === 'return') {
+    if (!count) return { ...state, done: true, cancelled: true };
+    return { ...state, done: true, picked: visible[cur][0] };
+  }
+  if (key.name === 'up' || (key.name === 'tab' && key.shift)) {
+    return count ? { ...state, index: (cur - 1 + count) % count } : state;
+  }
+  if (key.name === 'down' || key.name === 'tab') {
+    return count ? { ...state, index: (cur + 1) % count } : state;
+  }
+  if (key.name === 'backspace') {
+    if (state.filter.length <= 1) return { ...state, done: true, cancelled: true };
+    return { ...state, filter: state.filter.slice(0, -1), index: 0 };
+  }
+  if (str && str.length === 1 && str >= ' ' && str !== '\x7f' && !key.ctrl && !key.meta) {
+    return { ...state, filter: state.filter + str, index: 0 };
+  }
+  return state;
+}
+
+/**
+ * Live searchable slash-command menu (Claude-Code style): shows all commands,
+ * narrows as the user types, ↑↓/Tab to move, Enter selects, Esc/backspace-past-/
+ * cancels. commands: [[cmd, desc]]. Resolves the picked command or null.
+ */
+export function slashMenu(rl, commands) {
+  return new Promise((resolve) => {
+    let state = { all: commands, filter: '/', index: 0, done: false, cancelled: false, picked: null };
+    let lastLines = 0;
+
+    const render = (redraw) => {
+      if (redraw) process.stdout.write(`${ESC}[${lastLines}A`);
+      const visible = slashMatches(state.all, state.filter);
+      const cur = Math.min(state.index, Math.max(0, visible.length - 1));
+      let out = `${ESC}[0J${forceCyan('❯')} ${state.filter}\n`;
+      let lines = 1;
+      visible.forEach(([cmd, desc], i) => {
+        const row = `${i === cur ? '❯' : ' '} ${cmd.padEnd(7)} ${forceDim(desc)}`;
+        out += `${i === cur ? forceCyan(row) : row}\n`;
+        lines += 1;
+      });
+      if (!visible.length) {
+        out += `${forceDim('  no matching command')}\n`;
+        lines += 1;
+      }
+      out += `${forceDim('↑↓/tab move · enter select · esc cancel')}\n`;
+      lines += 1;
+      lastLines = lines;
+      process.stdout.write(out);
+    };
+
+    const release = withRawKeys(rl, (str, key = {}) => {
+      if (key.ctrl && key.name === 'c') {
+        release();
+        console.log('\n(interrupted — exiting)');
+        process.exit(0);
+      }
+      const next = slashMenuReduce(state, key, str);
+      if (next === state) return;
+      state = next;
+      if (state.done) {
+        release();
+        process.stdout.write(`${ESC}[${lastLines}A${ESC}[0J`);
+        resolve(state.cancelled ? null : state.picked);
+      } else {
+        render(true);
+      }
+    });
+    render(false);
+  });
+}
+
 /** Pure keypress → state transition for multiSelectMenu. checked is an ORDERED array of indices. */
 export function multiMenuReduce(state, key = {}) {
   const { index, count, checked } = state;
