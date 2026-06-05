@@ -121,6 +121,11 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
 
   let messages = [{ role: 'system', content: systemPrompt(process.cwd()) }];
 
+  let lastPromptTokens = null;
+  const ctxPct = () => {
+    const ctxLen = models.find((m) => m.id === chain[0])?.context;
+    return lastPromptTokens !== null && ctxLen ? (lastPromptTokens / ctxLen) * 100 : null;
+  };
 
   const permissions = createPermissions(async (toolName, args) => {
     spinner.stop();
@@ -166,11 +171,19 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
   console.log(`\naurora — model: ${chainLabel()}\nType a request, or /help for commands.`);
 
   const ch = legacyConhost ? '-' : '─';
+  const sep = legacyConhost ? '|' : '·';
   const rule = () => dim(ch.repeat(process.stdout.columns || 80));
+  const prompt = () => {
+    const dir = process.cwd().split(/[\\/]/).pop() || process.cwd();
+    const model = shortModelName(chain[0]) + (chain.length > 1 ? ` +${chain.length - 1}` : '');
+    const pct = ctxPct();
+    const ctx = pct !== null ? ` ${sep} ${Math.round(pct)}%` : '';
+    return `${dim(`${dir} ${sep} ${model}${ctx}`)} ${cyan('❯')} `;
+  };
 
   while (true) {
     console.log(`\n${rule()}`);
-    const input = (await rl.question(`${cyan('❯')} `)).trim();
+    const input = (await rl.question(prompt())).trim();
     console.log(rule());
     if (!input) continue;
 
@@ -240,6 +253,9 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
         },
         onRetry: (attempt, retries, delayMs) =>
           spinner.update(`rate-limited, retrying in ${delayMs / 1000}s (${attempt}/${retries})...`),
+        onUsage: (u) => {
+          if (typeof u?.prompt_tokens === 'number') lastPromptTokens = u.prompt_tokens;
+        },
         onModelSwitch: (from, to) => {
           spinner.stop();
           console.log(yellow(`⚠ ${shortModelName(from)} unavailable — switched to ${shortModelName(to)}`));
