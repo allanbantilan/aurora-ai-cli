@@ -21,27 +21,24 @@ const RED = c('91');     // bright red
 const BCY = c('1;96');   // bold bright cyan
 const BWH = c('1;97');   // bold bright white
 
-const QW = 46; // queen panel visual width
+const QW = 40; // crown art visual width
 
-function queenArt() {
+function crownArt() {
   return [
-    `${CY}        ❄${WH}      *      ${CY}❄${WH}      *      ${CY}❄${R}`,
-    `${BWH}            /\\     /\\     /\\${R}`,
-    `${BWH}           /  \\   /  \\   /  \\${R}`,
-    `${BWH}          / ${CY}❄${BWH}  \\ / ${CY}❄${BWH}  \\ / ${CY}❄${BWH}  \\${R}`,
-    `${BWH}         |::::::::::::::::::::|${R}`,
-    `${WH}          \\                  /${R}`,
-    `${WH}           |   ${CY}<>${WH}      ${CY}<>${WH}   |${R}`,
-    `${WH}           |                |${R}`,
-    `${WH}            \\      ${CY}──${WH}      /${R}`,
-    `${WH}             \\______________/${R}`,
-    `${WH}             /      ||      \\${R}`,
-    `${WH}           /   ${DIM}░${R}${WH}    ||    ${DIM}░${R}${WH}   \\${R}`,
-    `${WH}          /   ${DIM}▒░${R}${WH}    ||    ${DIM}░▒${R}${WH}   \\${R}`,
-    `${WH}         /   ${DIM}▓▒░${R}${WH} ${CY}❄${WH}  ||  ${CY}❄${WH} ${DIM}░▒▓${R}${WH}   \\${R}`,
-    `${WH}        /   ${DIM}█▓▒░${R}${WH}____||____${DIM}░▒▓█${R}${WH}   \\${R}`,
-    `${WH}       /__${DIM}░▒▓████████████████▓▒░${R}${WH}__\\${R}`,
-    `${CY}      ❄        ${DIM}~ a u r o r a ~${R}${CY}        ❄${R}`,
+    `${CY}      ❄${WH}       *       ${CY}❄${WH}       *      ${CY}❄${R}`,
+    '',
+    `${BWH}        *                       *${R}`,
+    `${BWH}        |\\          ${CY}✦${BWH}          /|${R}`,
+    `${BWH}        | \\         |         / |${R}`,
+    `${BWH}        |  \\   /\\   |   /\\   /  |${R}`,
+    `${BWH}        |   \\ /  \\  |  /  \\ /   |${R}`,
+    `${BWH}        |    V    \\ | /    V    |${R}`,
+    `${BWH}        |  ${CY}◆${BWH}       \\|/       ${CY}◆${BWH}  |${R}`,
+    `${BWH}        |___________${CY}◆${BWH}___________|${R}`,
+    `${WH}        |${DIM}░▒▓█████████████████▓▒░${R}${WH}|${R}`,
+    `${WH}        |_______________________|${R}`,
+    '',
+    `${CY}     ❄      ${DIM}~ a u r o r a ~${R}      ${CY}❄${R}`,
   ].map((line) => vpad(line, QW));
 }
 
@@ -73,16 +70,16 @@ function infoPanel({ chain, status }) {
 }
 
 export function printBanner({ chain = [], status = 'online' } = {}) {
-  const queen = queenArt();
+  const crown = crownArt();
   const panel = infoPanel({ chain, status });
 
-  // vertically center the panel beside the queen
-  const offset = Math.max(0, Math.floor((queen.length - panel.length) / 2));
-  const n = Math.max(queen.length, panel.length + offset);
+  // vertically center the panel beside the crown
+  const offset = Math.max(0, Math.floor((crown.length - panel.length) / 2));
+  const n = Math.max(crown.length, panel.length + offset);
 
   const lines = [];
   for (let i = 0; i < n; i++) {
-    const q = queen[i] ?? ' '.repeat(QW);
+    const q = crown[i] ?? ' '.repeat(QW);
     const p = i >= offset ? panel[i - offset] ?? '' : '';
     lines.push((q + '   ' + p).trimEnd());
   }
