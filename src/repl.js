@@ -67,13 +67,11 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
     init() {
       const rows = !legacyConhost && interactiveEnabled && sbRows();
       if (!rows) return;
-      // Single atomic write: scroll region + clear screen + status bar + home cursor
       process.stdout.write(
-        `\x1B[1;${rows - 1}r` +  // set scroll region
-        '\x1B[2J' +               // clear screen (prevents old PS content bleeding through)
-        `\x1B[${rows};1H\x1B[2K` + // move to last row, write status
+        `\x1B[1;${rows - 1}r` +    // set scroll region rows 1..N-1
+        `\x1B[${rows};1H\x1B[2K` + // move to last row, clear, write status
         this._text() +
-        '\x1B[1;1H'               // explicit home — no save/restore ambiguity
+        `\x1B[${rows - 1};1H`      // cursor at bottom of scroll region — content builds upward
       );
     },
     reset() {
