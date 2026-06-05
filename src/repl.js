@@ -195,6 +195,7 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
       continue;
     }
 
+    console.log(`\n${cyan('you')}  ${input}`);
     messages.push({ role: 'user', content: input });
     const highlighter = new CodeHighlighter();
     const writeModelText = createEchoSuppressor(input, (t) => {
@@ -202,6 +203,7 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
     });
     let reasoningStarted = 0;
     let assistantText = '';
+    let aiPrefixPrinted = false;
     toolsExecuted = [];
     spinner.start('thinking...');
     try {
@@ -214,6 +216,10 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
         onText: (t) => {
           assistantText += t;
           spinner.stop();
+          if (!aiPrefixPrinted) {
+            aiPrefixPrinted = true;
+            process.stdout.write(`\n${magenta('◆')}  `);
+          }
           writeModelText(t);
         },
         onReasoning: () => {
