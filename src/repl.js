@@ -49,38 +49,9 @@ export function sbRows(stdout = process.stdout) {
 export async function startRepl({ client, models, initialChain, saveModels }) {
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout, completer: completeCommand });
 
-  // Persistent bottom status bar: reserve the last terminal row via a scroll
-  // region so normal output never overwrites it. TTY-only — piped sessions skip.
-  const sb = {
-    draw() {
-      const rows = interactiveEnabled && sbRows();
-      if (!rows) return;
-      process.stdout.write(
-        '\x1B[s' +                         // save cursor (ANSI)
-        `\x1B[${rows};1H` +               // move to last row
-        '\x1B[2K' +                        // erase line
-        `  ${statusLine(process.cwd(), chain, { pct: ctxPct() })}` +
-        '\x1B[u'                           // restore cursor
-      );
-    },
-    init() {
-      const rows = interactiveEnabled && sbRows();
-      if (!rows) return;
-      process.stdout.write(`\x1B[1;${rows - 1}r`); // scroll region
-      this.draw();
-    },
-    reset() {
-      const rows = interactiveEnabled && sbRows();
-      if (!rows) return;
-      process.stdout.write(
-        '\x1B[r' +                         // restore full scroll region
-        '\x1B[s' +
-        `\x1B[${rows};1H` +
-        '\x1B[2K' +                        // clear the reserved row
-        '\x1B[u'
-      );
-    },
-  };
+  // Scroll-region pinning is not supported on Windows legacy conhost; sb is a
+  // no-op stub kept so callers compile without changes.
+  const sb = { draw() {}, init() {}, reset() {} };
 
   // readline intercepts Ctrl+C and emits SIGINT on the interface; without this
   // listener the process can never be interrupted (it just pauses stdin).
@@ -158,9 +129,6 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
     return lastPromptTokens !== null && ctxLen ? (lastPromptTokens / ctxLen) * 100 : null;
   };
 
-  sb.init();
-  process.stdout.on('resize', () => sb.init());
-
   const permissions = createPermissions(async (toolName, args) => {
     spinner.stop();
     console.log(`\n${yellow('[permission required]')}\n${formatToolPreview(toolName, args)}\n`);
@@ -207,7 +175,8 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
   const rule = () => dim((legacyConhost ? '-' : '─').repeat(process.stdout.columns || 80));
 
   while (true) {
-    console.log(`\n${rule()}`);
+    console.log(`\n  ${statusLine(process.cwd(), chain, { pct: ctxPct() })}`);
+    console.log(rule());
     const input = (await rl.question(`${cyan('❯')} `)).trim();
     console.log(rule());
     if (!input) continue;
@@ -230,7 +199,6 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
         saveModels(chain);
       }
       console.log(dim(`model chain: ${chain.map(shortModelName).join(' → ')}`));
-      sb.draw();
       continue;
     }
     if (input.startsWith('/')) {
@@ -280,10 +248,7 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
         onRetry: (attempt, retries, delayMs) =>
           spinner.update(`rate-limited, retrying in ${delayMs / 1000}s (${attempt}/${retries})...`),
         onUsage: (u) => {
-          if (typeof u?.prompt_tokens === 'number') {
-            lastPromptTokens = u.prompt_tokens;
-            sb.draw();
-          }
+          if (typeof u?.prompt_tokens === 'number') lastPromptTokens = u.prompt_tokens;
         },
         onModelSwitch: (from, to) => {
           spinner.stop();
@@ -291,13 +256,11 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
           spinner.start('thinking...');
           chain = promoteModel(chain, from, to);
           saveModels(chain);
-          sb.draw();
         },
       });
       writeModelText.flush();
       process.stdout.write(highlighter.flush());
       console.log();
-      sb.draw();
       if (claimsUnappliedChanges(assistantText, toolsExecuted)) {
         console.log(yellow('⚠ the model described changes but did not modify any files — ask it to apply them using its tools'));
       }
