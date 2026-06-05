@@ -100,6 +100,17 @@ test('menuReduce moves and wraps with arrow keys', () => {
   assert.equal(s.index, 0); // wrapped back to first
 });
 
+test('menuReduce cycles with tab and back with shift-tab', () => {
+  let s = { index: 0, count: 3, done: false, escaped: false };
+  s = menuReduce(s, { name: 'tab' });
+  assert.equal(s.index, 1);
+  s = menuReduce(s, { name: 'tab' });
+  s = menuReduce(s, { name: 'tab' });
+  assert.equal(s.index, 0); // wrapped around
+  s = menuReduce(s, { name: 'tab', shift: true });
+  assert.equal(s.index, 2); // shift-tab moves backward
+});
+
 test('menuReduce selects on enter', () => {
   const s = menuReduce({ index: 1, count: 3, done: false, escaped: false }, { name: 'return' });
   assert.deepEqual([s.done, s.index], [true, 1]);

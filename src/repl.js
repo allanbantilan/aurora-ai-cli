@@ -158,9 +158,20 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
 
   while (true) {
     console.log(`\n${rule()}`);
-    const input = (await rl.question(prompt())).trim();
+    let input = (await rl.question(prompt())).trim();
     console.log(rule());
     if (!input) continue;
+
+    // bare "/" opens the command menu: ↑↓/Tab to move, Enter/digit to select
+    if (input === '/' && interactiveEnabled) {
+      const picked = await selectMenu(rl, 'Commands (↑↓ or Tab, Enter to select):', [
+        ...COMMANDS.map(([cmd, desc]) => ({ label: `${cmd.padEnd(7)} ${desc}`, value: cmd })),
+        { label: 'cancel', value: '', isEscape: true },
+      ]);
+      if (!picked) continue;
+      console.log(dim(picked));
+      input = picked;
+    }
 
     if (input === '/exit') break;
     if (input === '/' || input === '/help') {
@@ -169,7 +180,6 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
     }
     if (input === '/clear') {
       messages = [messages[0]];
-      lastPromptTokens = null;
       console.log('(conversation cleared)');
       continue;
     }

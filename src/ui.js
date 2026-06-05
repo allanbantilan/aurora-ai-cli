@@ -230,8 +230,8 @@ export function formatToolPreview(name, args, { colors = colorEnabled } = {}) {
 /** Pure keypress → state transition for selectMenu (unit-testable). */
 export function menuReduce(state, key = {}) {
   const { index, count } = state;
-  if (key.name === 'up') return { ...state, index: (index - 1 + count) % count };
-  if (key.name === 'down') return { ...state, index: (index + 1) % count };
+  if (key.name === 'up' || (key.name === 'tab' && key.shift)) return { ...state, index: (index - 1 + count) % count };
+  if (key.name === 'down' || key.name === 'tab') return { ...state, index: (index + 1) % count };
   if (key.name === 'return') return { ...state, done: true };
   if (key.name === 'escape') return { ...state, done: true, escaped: true };
   if (/^[1-9]$/.test(key.sequence ?? '') && Number(key.sequence) <= count) {
