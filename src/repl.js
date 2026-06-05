@@ -1,4 +1,5 @@
 import readline from 'node:readline/promises';
+import { printBanner } from './banner.js';
 import { runTurn } from './agent.js';
 import * as tools from './tools/index.js';
 import { createPermissions } from './permissions.js';
@@ -149,13 +150,13 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
     },
   };
 
-  const chainLabel = () =>
-    `${chain[0]}${chain.length > 1 ? ` (+${chain.length - 1} fallback${chain.length > 2 ? 's' : ''})` : ''}`;
-
-  console.log(`\naurora — model: ${chainLabel()}\nType a request, or /help for commands.`);
+  printBanner({
+    model: chain[0] ?? '—',
+    fallbacks: Math.max(0, chain.length - 1),
+    status: 'online',
+  });
 
   const ch = legacyConhost ? '-' : '─';
-  const sep = legacyConhost ? '|' : '·';
   const rule = () => dim(ch.repeat(process.stdout.columns || 80));
   const prompt = () => `${dim(process.cwd())} ${cyan('❯')} `;
 
