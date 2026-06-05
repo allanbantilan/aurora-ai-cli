@@ -315,16 +315,18 @@ test('formatModelStatus formats health buckets', () => {
   assert.match(formatModelStatus(null), /no data/);
 });
 
-test('statusLine shows full cwd, active model and fallback count', () => {
+test('statusLine shows user@host:cwd, short model name and fallback count', () => {
   const line = statusLine('C:\\projects\\demo', ['deepseek/deepseek-chat:free', 'qwen/qwen3-coder:free', 'z-ai/glm-4.5-air:free']);
+  assert.match(line, new RegExp(`${os.userInfo().username}@${os.hostname()}:`));
   assert.match(line, /C:\\projects\\demo/);
-  assert.match(line, /deepseek\/deepseek-chat:free/);
+  assert.match(line, /deepseek-chat/); // short name…
+  assert.doesNotMatch(line, /deepseek\/deepseek-chat:free/); // …not the full id
   assert.match(line, /\+2 fallbacks/);
 });
 
 test('statusLine with a single model has no fallback suffix', () => {
   const line = statusLine('/home/x', ['m/one']);
-  assert.match(line, /m\/one/);
+  assert.match(line, /one/);
   assert.doesNotMatch(line, /fallback/);
 });
 
@@ -336,6 +338,14 @@ test('statusLine with an empty chain says no model', () => {
   const line = statusLine('/home/x', []);
   assert.match(line, /no model/);
   assert.doesNotMatch(line, /fallback/);
+});
+
+test('statusLine shows ctx: -- when no usage data is given', () => {
+  assert.match(statusLine('/home/x', ['m/a']), /ctx: --/);
+});
+
+test('statusLine renders the ctx percentage when given', () => {
+  assert.match(statusLine('/home/x', ['m/a'], { pct: 19 }), /ctx: 19% used/);
 });
 
 test('modelCategory buckets coder-ish ids as Coding, rest as General', () => {

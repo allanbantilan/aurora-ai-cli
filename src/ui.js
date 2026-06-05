@@ -1,4 +1,5 @@
 import path from 'node:path';
+import os from 'node:os';
 import fs from 'node:fs';
 import readline from 'node:readline';
 import { previewTool } from './tools/index.js';
@@ -47,10 +48,23 @@ export function formatCtx(pct) {
   };
 }
 
-/** Dim one-line status: full cwd · active model (+N fallbacks). */
-export function statusLine(cwd, chain) {
+/** user@host, tolerating the rare envs where userInfo() throws (no passwd entry). */
+function userHost() {
+  try {
+    return `${os.userInfo().username}@${os.hostname()}`;
+  } catch {
+    return os.hostname();
+  }
+}
+
+/** Dim one-line status: user@host:cwd · model (+N fallbacks) · ctx meter. */
+export function statusLine(cwd, chain, ctx = {}) {
+  const sep = legacyConhost ? ' | ' : ' · ';
   const extra = chain.length > 1 ? ` (+${chain.length - 1} fallback${chain.length > 2 ? 's' : ''})` : '';
-  return dim(`${cwd} ${legacyConhost ? '|' : '·'} ${chain[0] ?? 'no model'}${extra}`);
+  const model = chain[0] ? shortModelName(chain[0]) : 'no model';
+  const { text, level } = formatCtx(ctx.pct);
+  const meter = level === 'red' ? red(text) : level === 'yellow' ? yellow(text) : text;
+  return dim(`${userHost()}:${cwd}${sep}${model}${extra}${sep}${meter}`);
 }
 
 const FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
