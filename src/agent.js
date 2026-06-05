@@ -21,6 +21,7 @@ export async function runTurn({
   onToolStart,
   onRetry,
   onModelSwitch,
+  onUsage,
   retryDelayMs = 2000,
   stallMs = 30_000,
 }) {
@@ -50,7 +51,8 @@ export async function runTurn({
   };
 
   for (let i = 0; i < MAX_ITERATIONS; i++) {
-    const { content, toolCalls } = await complete();
+    const { content, toolCalls, usage } = await complete();
+    if (usage) onUsage?.(usage);
 
     const assistantMsg = { role: 'assistant', content: content || null };
     if (toolCalls.length) assistantMsg.tool_calls = toolCalls;
@@ -100,13 +102,14 @@ function nextWithStall(it, stallMs, model) {
 /** Stream one completion, accumulating text and tool-call deltas. */
 async function streamCompletion(client, model, messages, definitions, onText, onReasoning, onRetry, retryDelayMs = 2000, stallMs = 30_000) {
   const stream = await withRetry(
-    () => client.chat.completions.create({ model, messages, tools: definitions, stream: true }),
+    () => client.chat.completions.create({ model, messages, tools: definitions, stream: true, stream_options: { include_usage: true } }),
     2,
     retryDelayMs,
     onRetry
   );
 
   let content = '';
+  let usage = null;
   const toolCalls = [];
   const it = stream[Symbol.asyncIterator]();
   for (;;) {
@@ -118,6 +121,7 @@ async function streamCompletion(client, model, messages, definitions, onText, on
       throw err;
     }
     if (part.done) break;
+    if (part.value.usage) usage = part.value.usage;
     const delta = part.value.choices?.[0]?.delta;
     if (!delta) continue;
     if (delta.reasoning) onReasoning?.(delta.reasoning);
@@ -135,5 +139,5 @@ async function streamCompletion(client, model, messages, definitions, onText, on
       if (tc.function?.arguments) cur.function.arguments += tc.function.arguments;
     }
   }
-  return { content, toolCalls: toolCalls.filter(Boolean) };
+  return { content, toolCalls: toolCalls.filter(Boolean), usage };
 }

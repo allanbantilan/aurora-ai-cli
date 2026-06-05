@@ -349,3 +349,77 @@ test('does not fall back after partial content has streamed', async () => {
   );
   assert.equal(switched, false); // re-streaming would duplicate visible output
 });
+
+test('usage on the final stream chunk fires onUsage', () => {
+  // OpenRouter (with stream_options.include_usage) sends a last chunk with
+  // empty choices and a usage object
+  const usageChunk = { choices: [], usage: { prompt_tokens: 24000, completion_tokens: 12 } };
+  const client = fakeClient([[chunk({ content: 'hi' }), usageChunk]]);
+  const messages = [{ role: 'user', content: 'hello' }];
+  const seen = [];
+  return runTurn({
+    client,
+    models: ['m'],
+    messages,
+    tools: fakeTools(async () => 'unused'),
+    permissions: allowAll,
+    onUsage: (u) => seen.push(u),
+  }).then(() => {
+    assert.deepEqual(seen, [{ prompt_tokens: 24000, completion_tokens: 12 }]);
+  });
+});
+
+test('onUsage fires per completion so the last call reflects the final context size', async () => {
+  const usage = (n) => ({ choices: [], usage: { prompt_tokens: n } });
+  const client = fakeClient([
+    [...toolCallChunks('c1', 'read_file', '{"path":"a.txt"}'), usage(1000)],
+    [chunk({ content: 'done' }), usage(2500)],
+  ]);
+  const messages = [{ role: 'user', content: 'go' }];
+  const seen = [];
+  await runTurn({
+    client,
+    models: ['m'],
+    messages,
+    tools: fakeTools(async () => 'content'),
+    permissions: allowAll,
+    onUsage: (u) => seen.push(u.prompt_tokens),
+  });
+  assert.deepEqual(seen, [1000, 2500]);
+});
+
+test('streams without usage data never fire onUsage', async () => {
+  const client = fakeClient([[chunk({ content: 'hi' })]]);
+  let fired = false;
+  await runTurn({
+    client,
+    models: ['m'],
+    messages: [{ role: 'user', content: 'x' }],
+    tools: fakeTools(async () => 'unused'),
+    permissions: allowAll,
+    onUsage: () => { fired = true; },
+  });
+  assert.equal(fired, false);
+});
+
+test('completion requests opt in to usage reporting via stream_options', async () => {
+  let captured;
+  const client = {
+    chat: {
+      completions: {
+        create: async (params) => {
+          captured = params;
+          return textStream('ok');
+        },
+      },
+    },
+  };
+  await runTurn({
+    client,
+    models: ['m'],
+    messages: [{ role: 'user', content: 'x' }],
+    tools: fakeTools(async () => 'unused'),
+    permissions: allowAll,
+  });
+  assert.deepEqual(captured.stream_options, { include_usage: true });
+});
