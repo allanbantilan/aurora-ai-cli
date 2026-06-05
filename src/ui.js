@@ -33,6 +33,20 @@ export function promptLabel(cwd = process.cwd()) {
 export const legacyConhost =
   process.platform === 'win32' && !process.env.WT_SESSION && !process.env.TERM_PROGRAM;
 
+/**
+ * Pure ctx-meter formatter. pct is a 0–100 number (may exceed bounds; clamped)
+ * or null/undefined/NaN when no usage data exists yet.
+ * Returns { text, level } where level is 'dim' | 'yellow' | 'red'.
+ */
+export function formatCtx(pct) {
+  if (typeof pct !== 'number' || !Number.isFinite(pct)) return { text: 'ctx: --', level: 'dim' };
+  const clamped = Math.max(0, Math.min(100, Math.round(pct)));
+  return {
+    text: `ctx: ${clamped}% used`,
+    level: clamped >= 90 ? 'red' : clamped >= 70 ? 'yellow' : 'dim',
+  };
+}
+
 /** Dim one-line status: full cwd · active model (+N fallbacks). */
 export function statusLine(cwd, chain) {
   const extra = chain.length > 1 ? ` (+${chain.length - 1} fallback${chain.length > 2 ? 's' : ''})` : '';

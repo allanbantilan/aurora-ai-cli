@@ -15,6 +15,7 @@ import {
   statusLine,
   modelCategory,
   formatToolPreview,
+  formatCtx,
 } from '../src/ui.js';
 
 test('promptLabel shows the cwd folder name', () => {
@@ -348,4 +349,24 @@ test('modelCategory buckets coder-ish ids as Coding, rest as General', () => {
     ['some/brand-new-model', 'General'], // unknown ids never vanish — default bucket
   ];
   for (const [id, want] of cases) assert.equal(modelCategory(id), want, id);
+});
+
+test('formatCtx renders -- for missing data', () => {
+  assert.deepEqual(formatCtx(null), { text: 'ctx: --', level: 'dim' });
+  assert.deepEqual(formatCtx(undefined), { text: 'ctx: --', level: 'dim' });
+  assert.deepEqual(formatCtx(NaN), { text: 'ctx: --', level: 'dim' });
+});
+
+test('formatCtx buckets percentages into dim/yellow/red levels', () => {
+  assert.deepEqual(formatCtx(19), { text: 'ctx: 19% used', level: 'dim' });
+  assert.deepEqual(formatCtx(69.4), { text: 'ctx: 69% used', level: 'dim' });
+  assert.deepEqual(formatCtx(70), { text: 'ctx: 70% used', level: 'yellow' });
+  assert.deepEqual(formatCtx(89), { text: 'ctx: 89% used', level: 'yellow' });
+  assert.deepEqual(formatCtx(90), { text: 'ctx: 90% used', level: 'red' });
+  assert.deepEqual(formatCtx(91), { text: 'ctx: 91% used', level: 'red' });
+});
+
+test('formatCtx clamps out-of-range values', () => {
+  assert.deepEqual(formatCtx(140), { text: 'ctx: 100% used', level: 'red' });
+  assert.deepEqual(formatCtx(-5), { text: 'ctx: 0% used', level: 'dim' });
 });
