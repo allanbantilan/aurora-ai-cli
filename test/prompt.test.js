@@ -10,11 +10,13 @@ test('systemPrompt forbids claiming changes without tool calls', () => {
   assert.match(systemPrompt('.'), /Never describe a change as if you applied it/);
 });
 
-test('systemPrompt scopes Aurora to coding tasks only', () => {
+test('systemPrompt scopes Aurora to coding tasks but answers meta-questions', () => {
   const p = systemPrompt('.');
-  assert.match(p, /coding assistant only/i);
   assert.match(p, /I'm Aurora, a coding CLI agent/);
-  assert.match(p, /DECLINE/);
+  assert.match(p, /DECLINE only/);
+  assert.match(p, /what can you do/i); // capability questions answered, not declined
+  assert.match(p, /Never decline these/);
+  assert.match(p, /treat it as dev-related/i); // doubt resolves toward helping
 });
 
 test('systemPrompt carries the stack defaults', () => {
