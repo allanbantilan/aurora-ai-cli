@@ -195,7 +195,6 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
       continue;
     }
 
-    console.log(`\n${cyan('you')}  ${input}`);
     messages.push({ role: 'user', content: input });
     const highlighter = new CodeHighlighter();
     const writeModelText = createEchoSuppressor(input, (t) => {
