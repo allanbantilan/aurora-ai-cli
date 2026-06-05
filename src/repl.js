@@ -44,9 +44,41 @@ export function commandList() {
 export async function startRepl({ client, models, initialChain, saveModels }) {
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout, completer: completeCommand });
 
+  // Persistent bottom status bar: reserve the last terminal row via a scroll
+  // region so normal output never overwrites it. TTY-only — piped sessions skip.
+  const sb = {
+    draw() {
+      if (!interactiveEnabled || !process.stdout.rows) return;
+      const rows = process.stdout.rows;
+      process.stdout.write(
+        '\x1B7' +                          // save cursor (DEC)
+        `\x1B[${rows};1H` +               // move to last row
+        '\x1B[2K' +                        // erase line
+        `  ${statusLine(process.cwd(), chain, { pct: ctxPct() })}` +
+        '\x1B8'                            // restore cursor
+      );
+    },
+    init() {
+      if (!interactiveEnabled || !process.stdout.rows) return;
+      process.stdout.write(`\x1B[1;${process.stdout.rows - 1}r`); // scroll region
+      this.draw();
+    },
+    reset() {
+      if (!interactiveEnabled || !process.stdout.rows) return;
+      process.stdout.write(
+        '\x1B[r' +                         // restore full scroll region
+        '\x1B7' +
+        `\x1B[${process.stdout.rows};1H` +
+        '\x1B[2K' +                        // clear the reserved row
+        '\x1B8'
+      );
+    },
+  };
+
   // readline intercepts Ctrl+C and emits SIGINT on the interface; without this
   // listener the process can never be interrupted (it just pauses stdin).
   rl.on('SIGINT', () => {
+    sb.reset();
     console.log('\n(interrupted — exiting)');
     rl.close();
     process.exit(0);
@@ -54,7 +86,7 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
 
   // Ctrl+D / piped stdin ending closes the interface; exit instead of
   // crashing on the next rl.question (ERR_USE_AFTER_CLOSE).
-  rl.on('close', () => process.exit(0));
+  rl.on('close', () => { sb.reset(); process.exit(0); });
 
   const spinner = createSpinner();
 
@@ -119,6 +151,9 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
     return lastPromptTokens !== null && ctxLen ? (lastPromptTokens / ctxLen) * 100 : null;
   };
 
+  sb.init();
+  process.stdout.on('resize', () => sb.init());
+
   const permissions = createPermissions(async (toolName, args) => {
     spinner.stop();
     console.log(`\n${yellow('[permission required]')}\n${formatToolPreview(toolName, args)}\n`);
@@ -167,7 +202,7 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
   while (true) {
     console.log(`\n${rule()}`);
     const input = (await rl.question(`${cyan('❯')} `)).trim();
-    console.log(`${rule()}\n  ${statusLine(process.cwd(), chain, { pct: ctxPct() })}`);
+    console.log(rule());
     if (!input) continue;
 
     if (input === '/exit') break;
@@ -188,6 +223,7 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
         saveModels(chain);
       }
       console.log(dim(`model chain: ${chain.map(shortModelName).join(' → ')}`));
+      sb.draw();
       continue;
     }
     if (input.startsWith('/')) {
@@ -237,7 +273,10 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
         onRetry: (attempt, retries, delayMs) =>
           spinner.update(`rate-limited, retrying in ${delayMs / 1000}s (${attempt}/${retries})...`),
         onUsage: (u) => {
-          if (typeof u?.prompt_tokens === 'number') lastPromptTokens = u.prompt_tokens;
+          if (typeof u?.prompt_tokens === 'number') {
+            lastPromptTokens = u.prompt_tokens;
+            sb.draw();
+          }
         },
         onModelSwitch: (from, to) => {
           spinner.stop();
@@ -245,11 +284,13 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
           spinner.start('thinking...');
           chain = promoteModel(chain, from, to);
           saveModels(chain);
+          sb.draw();
         },
       });
       writeModelText.flush();
       process.stdout.write(highlighter.flush());
       console.log();
+      sb.draw();
       if (claimsUnappliedChanges(assistantText, toolsExecuted)) {
         console.log(yellow('⚠ the model described changes but did not modify any files — ask it to apply them using its tools'));
       }
