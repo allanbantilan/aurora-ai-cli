@@ -151,7 +151,13 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
     },
   };
 
-  printBanner({ chain, status: 'online' });
+  let bannerHealth = new Map();
+  if (interactiveEnabled && chain.length) {
+    spinner.start('checking model status...');
+    bannerHealth = await fetchModelStatus(chain).catch(() => new Map());
+    spinner.stop();
+  }
+  printBanner({ chain, status: 'online', health: bannerHealth });
 
   const ch = legacyConhost ? '-' : '─';
   const rule = () => dim(ch.repeat(process.stdout.columns || 80));

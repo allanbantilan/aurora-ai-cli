@@ -1,4 +1,4 @@
-import { colorEnabled, shortModelName } from './ui.js';
+import { colorEnabled, shortModelName, formatModelStatus } from './ui.js';
 
 /** Visual length: strip ANSI escape codes before measuring. */
 function vlen(s) {
@@ -16,8 +16,6 @@ const R   = c('0');
 const CY  = c('96');     // bright cyan
 const WH  = c('97');     // bright white
 const DIM = c('2');      // dim
-const GR  = c('92');     // bright green
-const RED = c('91');     // bright red
 const BCY = c('1;96');   // bold bright cyan
 const BWH = c('1;97');   // bold bright white
 
@@ -42,20 +40,20 @@ function crownArt() {
   ].map((line) => vpad(line, QW));
 }
 
-function infoPanel({ chain, status }) {
-  const head = chain[0] ? shortModelName(chain[0]) : '—';
-  const falls = chain.slice(1).map(shortModelName);
-  const dot = status === 'online' ? `${GR}●${R}` : `${RED}●${R}`;
+function infoPanel({ chain, status, health }) {
+  const nameW = Math.max(12, ...chain.map((id) => shortModelName(id).length));
+  const row = (label, id) =>
+    `  ${DIM}${label.padEnd(9)}${R} ${WH}${shortModelName(id).padEnd(nameW)}${R}  ${formatModelStatus(health.get(id))}`;
 
   const inner = [];
   inner.push(`  ${BCY}✦  A U R O R A${R}`);
   inner.push('');
-  inner.push(`  ${DIM}model    ${R} ${WH}${head}${R} ${dot}`);
-  if (falls.length) {
-    inner.push(`  ${DIM}fallback ${R} ${WH}${falls[0]}${R}`);
-    for (const f of falls.slice(1)) inner.push(`  ${DIM}         ${R} ${WH}${f}${R}`);
+  if (chain.length) {
+    inner.push(row('model', chain[0]));
+    chain.slice(1).forEach((id, i) => inner.push(row(i === 0 ? 'fallback' : '', id)));
+    if (chain.length === 1) inner.push(`  ${DIM}fallback  none${R}`);
   } else {
-    inner.push(`  ${DIM}fallback ${R} ${DIM}none${R}`);
+    inner.push(`  ${DIM}model     —${R}`);
   }
   inner.push(`  ${DIM}status   ${R} ${WH}${status}${R}`);
   inner.push('');
@@ -69,9 +67,9 @@ function infoPanel({ chain, status }) {
   return [top, ...inner.map((s) => `${brd}${vpad(s, pw)}${brd}`), bot];
 }
 
-export function printBanner({ chain = [], status = 'online' } = {}) {
+export function printBanner({ chain = [], status = 'online', health = new Map() } = {}) {
   const crown = crownArt();
-  const panel = infoPanel({ chain, status });
+  const panel = infoPanel({ chain, status, health });
 
   // vertically center the panel beside the crown
   const offset = Math.max(0, Math.floor((crown.length - panel.length) / 2));
