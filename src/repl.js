@@ -41,6 +41,12 @@ export function commandList() {
   return COMMANDS.map(([c, d]) => `${c.padEnd(7)} ${d}`).join('\n');
 }
 
+/** Read terminal row count from stdout, with a Windows-compatible fallback. */
+export function sbRows(stdout = process.stdout) {
+  const r = stdout.rows ?? stdout.getWindowSize?.()[1];
+  return r || undefined; // treat 0 as unavailable
+}
+
 export async function startRepl({ client, models, initialChain, saveModels }) {
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout, completer: completeCommand });
 
@@ -48,29 +54,31 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
   // region so normal output never overwrites it. TTY-only — piped sessions skip.
   const sb = {
     draw() {
-      if (!interactiveEnabled || !process.stdout.rows) return;
-      const rows = process.stdout.rows;
+      const rows = interactiveEnabled && sbRows();
+      if (!rows) return;
       process.stdout.write(
-        '\x1B7' +                          // save cursor (DEC)
+        '\x1B[s' +                         // save cursor (ANSI)
         `\x1B[${rows};1H` +               // move to last row
         '\x1B[2K' +                        // erase line
         `  ${statusLine(process.cwd(), chain, { pct: ctxPct() })}` +
-        '\x1B8'                            // restore cursor
+        '\x1B[u'                           // restore cursor
       );
     },
     init() {
-      if (!interactiveEnabled || !process.stdout.rows) return;
-      process.stdout.write(`\x1B[1;${process.stdout.rows - 1}r`); // scroll region
+      const rows = interactiveEnabled && sbRows();
+      if (!rows) return;
+      process.stdout.write(`\x1B[1;${rows - 1}r`); // scroll region
       this.draw();
     },
     reset() {
-      if (!interactiveEnabled || !process.stdout.rows) return;
+      const rows = interactiveEnabled && sbRows();
+      if (!rows) return;
       process.stdout.write(
         '\x1B[r' +                         // restore full scroll region
-        '\x1B7' +
-        `\x1B[${process.stdout.rows};1H` +
+        '\x1B[s' +
+        `\x1B[${rows};1H` +
         '\x1B[2K' +                        // clear the reserved row
-        '\x1B8'
+        '\x1B[u'
       );
     },
   };
