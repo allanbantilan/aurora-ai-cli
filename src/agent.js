@@ -9,6 +9,8 @@ const MAX_ITERATIONS = 15;
  * before any content has streamed, the next model is tried and
  * onModelSwitch(failed, next) fires. Other errors propagate immediately.
  * A stream with no delta for stallMs is aborted and treated like an availability error.
+ * onUsage(usage) fires after each completion that reports a usage object
+ * ({prompt_tokens, ...}) on the final stream chunk; silent otherwise.
  */
 export async function runTurn({
   client,
