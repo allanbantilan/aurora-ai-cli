@@ -178,6 +178,7 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
     console.log(`\n${rule()}`);
     const input = (await rl.question(`${cyan('❯')} `)).trim();
     console.log(rule());
+    console.log(`  ${statusLine(process.cwd(), chain, { pct: ctxPct() })}`);
     if (!input) continue;
 
     if (input === '/exit') break;
@@ -260,7 +261,6 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
       writeModelText.flush();
       process.stdout.write(highlighter.flush());
       console.log();
-      console.log(`\n  ${statusLine(process.cwd(), chain, { pct: ctxPct() })}`);
       if (claimsUnappliedChanges(assistantText, toolsExecuted)) {
         console.log(yellow('⚠ the model described changes but did not modify any files — ask it to apply them using its tools'));
       }
