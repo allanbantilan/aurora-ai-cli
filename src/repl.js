@@ -48,9 +48,33 @@ export function sbRows(stdout = process.stdout) {
 export async function startRepl({ client, models, initialChain, saveModels }) {
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout, completer: completeCommand });
 
-  // Scroll-region pinning is not supported on Windows legacy conhost; sb is a
-  // no-op stub kept so callers compile without changes.
-  const sb = { draw() {}, init() {}, reset() {} };
+  // Persistent bottom status bar via scroll region. Works on any VT220-capable
+  // terminal (Windows Terminal, macOS Terminal, VS Code, cmd.exe on Win10+).
+  const sb = {
+    draw() {
+      const rows = interactiveEnabled && sbRows();
+      if (!rows) return;
+      const status = `  ${process.cwd()} ${legacyConhost ? '|' : '·'} ${shortModelName(chain[0])}${chain.length > 1 ? ` +${chain.length - 1}` : ''}${ctxPct() !== null ? ` · ctx: ${Math.round(ctxPct())}%` : ''}`;
+      process.stdout.write(
+        '\x1B[s' +
+        `\x1B[${rows};1H` +
+        '\x1B[2K' +
+        status +
+        '\x1B[u'
+      );
+    },
+    init() {
+      const rows = interactiveEnabled && sbRows();
+      if (!rows) return;
+      process.stdout.write(`\x1B[1;${rows - 1}r`);
+      this.draw();
+    },
+    reset() {
+      const rows = interactiveEnabled && sbRows();
+      if (!rows) return;
+      process.stdout.write('\x1B[r\x1B[s' + `\x1B[${rows};1H` + '\x1B[2K\x1B[u');
+    },
+  };
 
   // readline intercepts Ctrl+C and emits SIGINT on the interface; without this
   // listener the process can never be interrupted (it just pauses stdin).
@@ -127,6 +151,9 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
     return lastPromptTokens !== null && ctxLen ? (lastPromptTokens / ctxLen) * 100 : null;
   };
 
+  sb.init();
+  process.stdout.on('resize', () => sb.init());
+
   const permissions = createPermissions(async (toolName, args) => {
     spinner.stop();
     console.log(`\n${yellow('[permission required]')}\n${formatToolPreview(toolName, args)}\n`);
@@ -199,6 +226,7 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
         saveModels(chain);
       }
       console.log(dim(`model chain: ${chain.map(shortModelName).join(' → ')}`));
+      sb.draw();
       continue;
     }
     if (input.startsWith('/')) {
@@ -248,7 +276,10 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
         onRetry: (attempt, retries, delayMs) =>
           spinner.update(`rate-limited, retrying in ${delayMs / 1000}s (${attempt}/${retries})...`),
         onUsage: (u) => {
-          if (typeof u?.prompt_tokens === 'number') lastPromptTokens = u.prompt_tokens;
+          if (typeof u?.prompt_tokens === 'number') {
+            lastPromptTokens = u.prompt_tokens;
+            sb.draw();
+          }
         },
         onModelSwitch: (from, to) => {
           spinner.stop();
@@ -256,6 +287,7 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
           spinner.start('thinking...');
           chain = promoteModel(chain, from, to);
           saveModels(chain);
+          sb.draw();
         },
       });
       writeModelText.flush();
