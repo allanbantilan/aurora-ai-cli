@@ -154,10 +154,11 @@ export function formatDiff(filePath, oldText, newText, { colors = true } = {}) {
   if (!hunks.length) return header;
 
   const width = numberWidth(ops);
+  const gap = (n) => st.dim(`${SEPARATOR}  (+${n} lines)`); // labelled skip marker
   const rows = [];
   if (verb === 'Created' || verb === 'Deleted') {
     for (const op of ops.slice(0, CREATED_PREVIEW_LINES)) rows.push(renderOp(op, width, st));
-    if (ops.length > CREATED_PREVIEW_LINES) rows.push('', st.dim(SEPARATOR));
+    if (ops.length > CREATED_PREVIEW_LINES) rows.push('', gap(ops.length - CREATED_PREVIEW_LINES));
   } else {
     let rendered = 0;
     let truncated = 0;
@@ -170,9 +171,15 @@ export function formatDiff(filePath, oldText, newText, { colors = true } = {}) {
         rows.push(renderOp(op, width, st));
         rendered += 1;
       }
-      if (h < hunks.length - 1 && rendered < MAX_RENDERED_LINES) rows.push('', st.dim(SEPARATOR), '');
+      if (h < hunks.length - 1 && rendered < MAX_RENDERED_LINES) {
+        // gap boundaries are context lines, so old-file numbering exists on both sides
+        const last = hunk[hunk.length - 1];
+        const next = hunks[h + 1][0];
+        const skipped = (next.oldNum ?? next.newNum) - (last.oldNum ?? last.newNum) - 1;
+        rows.push('', gap(skipped), '');
+      }
     });
-    if (truncated) rows.push(st.dim(`… ${truncated} more lines`));
+    if (truncated) rows.push(gap(truncated));
   }
   return [header, '', ...rows].join('\n');
 }

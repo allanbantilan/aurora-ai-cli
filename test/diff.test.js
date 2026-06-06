@@ -101,7 +101,7 @@ test('formatDiff: multiple hunks are separated by a spaced ellipsis with blank l
   const oldText = ['x0', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'x1'].join('\n');
   const newText = ['X0', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'X1'].join('\n');
   const out = formatDiff('a.js', oldText, newText, { colors: false });
-  assert.match(out, /\n\n· · · · ·\n\n/);
+  assert.match(out, /\n\n· · · · · {2}\(\+6 lines\)\n\n/); // 6 unchanged lines skipped between chunks
 });
 
 test('formatDiff: created file is all adds, truncated at 15 lines', () => {
@@ -110,7 +110,7 @@ test('formatDiff: created file is all adds, truncated at 15 lines', () => {
   assert.match(out, /^Created new\.js \(\+20 -0\)/);
   assert.match(out, /15 \+ line15/);
   assert.doesNotMatch(out, /line16/);
-  assert.match(out, /· · · · ·/);
+  assert.match(out, /· · · · · {2}\(\+5 lines\)/);
 });
 
 test('formatDiff: short created file has no ellipsis', () => {
@@ -149,7 +149,7 @@ test('formatDiff: huge edited diff is capped with a more-lines tail', () => {
   const out = formatDiff('big.js', oldText, newText, { colors: false });
   const bodyLines = out.split('\n').length;
   assert.equal(bodyLines <= 205, true);
-  assert.match(out, /… \d+ more lines/);
+  assert.match(out, /· · · · · {2}\(\+\d+ lines\)/);
 });
 
 test('formatDiff: ANSI escapes embedded in file content are stripped from output', () => {
