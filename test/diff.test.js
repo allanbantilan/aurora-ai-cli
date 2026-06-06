@@ -143,12 +143,32 @@ test('formatDiff: colors=true tints whole removed rows dark red and added rows d
   assert.doesNotMatch(out, new RegExp(`${ESC}\\[4[12]m`)); // bright legacy palette is gone
 });
 
-test('formatDiff: huge edited diff is capped with a more-lines tail', () => {
+test('formatDiff: full-file rewrite collapses into labelled removed/added groups', () => {
   const oldText = Array.from({ length: 300 }, (_, i) => `old${i}`).join('\n');
   const newText = Array.from({ length: 300 }, (_, i) => `new${i}`).join('\n');
   const out = formatDiff('big.js', oldText, newText, { colors: false });
-  const bodyLines = out.split('\n').length;
-  assert.equal(bodyLines <= 205, true);
+  assert.match(out, /· · · · · {2}\(300 lines removed, all -\)/);
+  assert.match(out, /· · · · · {2}\(300 lines added, all \+\)/);
+  assert.doesNotMatch(out, /old5|new5/); // raw rows are folded away
+  assert.equal(out.split('\n').length <= 6, true);
+});
+
+test('formatDiff: runs of 5+ same-sign lines collapse, shorter runs stay verbatim', () => {
+  const oldText = ['keep1', 'a', 'b', 'c', 'd', 'e', 'f', 'keep2'].join('\n');
+  const newText = ['keep1', 'X', 'Y', 'keep2'].join('\n');
+  const out = formatDiff('f.js', oldText, newText, { colors: false });
+  assert.match(out, /· · · · · {2}\(6 lines removed, all -\)/); // a..f folded
+  assert.match(out, /\+ X/); // 2-line add run stays verbatim
+  assert.match(out, /\+ Y/);
+  assert.doesNotMatch(out, /- a$/m);
+});
+
+test('formatDiff: huge diff of many small chunks is still capped with a more-lines tail', () => {
+  // alternating single-line changes never form a collapsible run
+  const oldText = Array.from({ length: 300 }, (_, i) => `keep${i}\nold${i}`).join('\n');
+  const newText = Array.from({ length: 300 }, (_, i) => `keep${i}\nnew${i}`).join('\n');
+  const out = formatDiff('big.js', oldText, newText, { colors: false });
+  assert.equal(out.split('\n').length <= 205, true);
   assert.match(out, /· · · · · {2}\(\+\d+ lines\)/);
 });
 

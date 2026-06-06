@@ -95,6 +95,7 @@ export function diffLines(oldText, newText) {
 
 const CREATED_PREVIEW_LINES = 15; // created/deleted files preview this many lines
 const MAX_RENDERED_LINES = 200; // edited diffs are capped at this many body lines
+const COLLAPSE_RUN = 5; // runs of >= this many same-sign lines collapse into a labelled group
 
 const ESC = String.fromCharCode(27);
 const ANSI_RE = /\x1b\[[0-9;]*m|\x1b/g; // SGR sequences, then any stray ESC
@@ -131,6 +132,17 @@ function renderOp(op, width, st) {
   return st.dim(`${num}   ${text}`);
 }
 
+/** Group a hunk's ops into consecutive same-type runs. */
+function sameTypeRuns(hunk) {
+  const runs = [];
+  for (const op of hunk) {
+    const last = runs[runs.length - 1];
+    if (last && last.type === op.type) last.ops.push(op);
+    else runs.push({ type: op.type, ops: [op] });
+  }
+  return runs;
+}
+
 /** Line numbers sit in a fixed 4-char right-aligned column (wider only past line 9999). */
 function numberWidth(ops) {
   let max = 1;
@@ -163,13 +175,27 @@ export function formatDiff(filePath, oldText, newText, { colors = true } = {}) {
     let rendered = 0;
     let truncated = 0;
     hunks.forEach((hunk, h) => {
-      for (const op of hunk) {
-        if (rendered >= MAX_RENDERED_LINES) {
-          truncated += 1;
+      for (const run of sameTypeRuns(hunk)) {
+        // long uniform blocks read better as one labelled group than a wall of color
+        if (run.type !== 'ctx' && run.ops.length >= COLLAPSE_RUN) {
+          if (rendered < MAX_RENDERED_LINES) {
+            const word = run.type === 'del' ? 'removed' : 'added';
+            const sign = run.type === 'del' ? '-' : '+';
+            rows.push(st.dim(`${SEPARATOR}  (${run.ops.length} lines ${word}, all ${sign})`));
+            rendered += 1;
+          } else {
+            truncated += run.ops.length;
+          }
           continue;
         }
-        rows.push(renderOp(op, width, st));
-        rendered += 1;
+        for (const op of run.ops) {
+          if (rendered >= MAX_RENDERED_LINES) {
+            truncated += 1;
+            continue;
+          }
+          rows.push(renderOp(op, width, st));
+          rendered += 1;
+        }
       }
       if (h < hunks.length - 1 && rendered < MAX_RENDERED_LINES) {
         // gap boundaries are context lines, so old-file numbering exists on both sides
