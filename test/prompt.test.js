@@ -74,10 +74,7 @@ test('systemPrompt carries Claude Code-style plan-mode instructions', () => {
   assert.match(p, /Not confirmed yet/);
   assert.match(p, /do not assume/i);
   assert.match(p, /AURORA_PLAN_PROTOCOL/);
-  assert.match(p, /Verified project context/);
-  assert.match(p, /Questions \/ Unknowns/);
-  assert.match(p, /Files likely to change/);
-  assert.match(p, /Risks/);
+  assert.match(p, /"risks"/); // field-rules bullet mentions risks as a JSON field
   assert.match(p, /recommended choice first/i);
   assert.match(p, /Do not recommend installing libraries/i);
   assert.match(p, /"title"/);

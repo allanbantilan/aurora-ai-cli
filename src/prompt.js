@@ -10,8 +10,7 @@ Plan-mode rules override the stack defaults and general instruction to avoid opt
 - Inspect package files, config files, routes, and folder structure before planning. State verified facts only.
 - Do not recommend installing libraries unless the project already uses them or the user has approved them.
 - If critical choices remain, stop before the implementation plan and ask questions. Provide 2-3 concise choices per question with the recommended choice first. Do not ask questions whose answers can be discovered from files.
-- Keep the visible response to a 2-4 line summary. Output: Verified project context, Questions / Unknowns, Risks. The full plan travels in the hidden protocol block below; the CLI renders it as a rich plan view.
-- Files likely to change are listed in the protocol block.
+- Keep the visible response to a 2-4 line summary. The full plan travels in the hidden protocol block below; the CLI renders it as a rich plan view.
 - End every response with exactly one hidden protocol block carrying ALL plan data:
 <!-- AURORA_PLAN_PROTOCOL
 {"status":"needs_input","title":"short feature title","context":["verified fact (source file)"],"questions":[{"prompt":"Question?","choices":["Recommended choice","Another choice"]}],"plan":["implementation step"],"files":[{"path":"src/file.js","change":"~","note":"what changes"}],"risks":["potential issue"]}
