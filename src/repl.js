@@ -37,7 +37,7 @@ const COMMANDS = [
 export const AUTO_WARNING = 'Enable Auto mode? All file changes and shell commands will run without approval.';
 export const PLAN_PROMPT = 'What feature should Aurora plan? > ';
 export const PLAN_IMPLEMENT_PROMPT = 'Proceed with implementation?';
-const PLAN_PROTOCOL_RE = /\n?<!-- AURORA_PLAN_PROTOCOL\s*\n([\s\S]*?)\n-->\s*$/;
+const PLAN_PROTOCOL_RE = /\n?<!-- AURORA_PLAN_PROTOCOL\s*\n([\s\S]*?)\s*-->\s*$/;
 
 export function buildInputPrompt(cwd) {
   return `${dim(cwd)} ${cyan('❯')} `;

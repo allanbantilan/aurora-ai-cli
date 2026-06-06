@@ -228,6 +228,19 @@ test('parsePlanResponse separates visible text from needs-input protocol', () =>
   assert.deepEqual(result.questions, [{ prompt: 'Which route?', choices: ['Replace home page', 'Add a new route'] }]);
 });
 
+test('parsePlanResponse hides protocol when the closing marker follows JSON on the same line', () => {
+  const response = `## Questions / Unknowns
+- Which technology?
+
+<!-- AURORA_PLAN_PROTOCOL
+{"status":"needs_input","questions":[{"prompt":"Which technology?","choices":["Plain HTML","React"]}]}-->`;
+  const result = parsePlanResponse(response);
+
+  assert.doesNotMatch(result.text, /AURORA_PLAN_PROTOCOL|needs_input/);
+  assert.equal(result.status, 'needs_input');
+  assert.deepEqual(result.questions, [{ prompt: 'Which technology?', choices: ['Plain HTML', 'React'] }]);
+});
+
 test('parsePlanResponse safely treats missing or malformed protocol as complete', () => {
   assert.deepEqual(parsePlanResponse('plain plan'), { text: 'plain plan', status: 'complete', questions: [] });
   const malformed = parsePlanResponse('visible\n<!-- AURORA_PLAN_PROTOCOL\nnope\n-->');
