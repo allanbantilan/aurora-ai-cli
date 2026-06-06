@@ -559,10 +559,10 @@ export function renderPlan(
 
   // title box
   const label = ' AURORA PLAN ';
-  const inner = Math.min(columns - 2, Math.max((plan.title?.length ?? 0) + 4, 44));
+  const inner = Math.max(label.length + 1, Math.min(columns - 2, Math.max((plan.title?.length ?? 0) + 4, 44)));
   out.push(c.dim(`${tl}${h}${label}${h.repeat(Math.max(0, inner - label.length - 1))}${tr}`));
   if (plan.title) out.push(clip(`${c.dim(v)}  ${plan.title}`));
-  out.push(c.dim(`${bl}${h.repeat(inner)}${br}`));
+  out.push(c.dim(`${bl}${h.repeat(Math.max(0, inner))}${br}`));
 
   const section = (icon, name, lines) => {
     if (!lines.length) return;

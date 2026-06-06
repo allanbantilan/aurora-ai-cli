@@ -584,3 +584,9 @@ test('formatToolPreview edit_file falls back to remove/insert blocks when old_st
   assert.match(out, /insert/);
   fs.rmSync(dir, { recursive: true, force: true });
 });
+
+test('renderPlan never throws on absurdly small column widths', () => {
+  for (const columns of [0, 1, 2, 5]) {
+    assert.doesNotThrow(() => renderPlan(PLAN_FIXTURE, { colors: false, ascii: false, columns }));
+  }
+});
