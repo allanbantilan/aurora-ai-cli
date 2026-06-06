@@ -19,6 +19,7 @@ import {
   formatToolPreview,
   formatCtx,
   renderPlan,
+  renderDoneSummary,
 } from '../src/ui.js';
 
 test('promptLabel shows the cwd folder name', () => {
@@ -596,4 +597,38 @@ test('renderPlan never throws on absurdly small column widths', () => {
   for (const columns of [0, 1, 2, 5]) {
     assert.doesNotThrow(() => renderPlan(PLAN_FIXTURE, { colors: false, ascii: false, columns }));
   }
+});
+
+test('renderDoneSummary shows counts box, file list and next-step prompt', () => {
+  const out = renderDoneSummary(
+    [
+      { path: 'products.json', change: '+' },
+      { path: 'style.css', change: '+' },
+      { path: 'index.html', change: '~' },
+    ],
+    { errors: 0, colors: false, ascii: false, columns: 80 }
+  );
+  assert.match(out, /AURORA DONE/);
+  assert.match(out, /2 files created · 1 file edited · 0 errors/);
+  assert.match(out, /\+ {2}products\.json/);
+  assert.match(out, /~ {2}index\.html/);
+  assert.match(out, /❯ What should Aurora do next\?/);
+});
+
+test('renderDoneSummary dedupes paths and keeps created over edited', () => {
+  const out = renderDoneSummary(
+    [
+      { path: 'a.js', change: '+' },
+      { path: 'a.js', change: '~' },
+    ],
+    { colors: false, ascii: false, columns: 80 }
+  );
+  assert.match(out, /1 file created · 0 errors/);
+  assert.equal((out.match(/a\.js/g) ?? []).length, 1);
+});
+
+test('renderDoneSummary reports errors and never throws on empty input', () => {
+  const out = renderDoneSummary([], { errors: 2, colors: false, ascii: false, columns: 80 });
+  assert.match(out, /2 errors/);
+  assert.doesNotMatch(out, /files created/);
 });

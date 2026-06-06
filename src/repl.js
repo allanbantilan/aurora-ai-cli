@@ -26,6 +26,7 @@ import {
   red,
   dim,
   renderPlan,
+  renderDoneSummary,
   colorEnabled,
 } from './ui.js';
 
@@ -480,6 +481,9 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
     }
 
     let planningSession = previousModeAfterTurn !== null;
+    let planShownThisSession = false;
+    const turnFileOps = [];
+    let turnErrors = 0;
     try {
       while (input) {
         messages.push({ role: 'user', content: input });
@@ -526,7 +530,12 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
           },
           onToolEnd: (name, args, result) => {
             if (!DIFF_TOOLS.has(name) || typeof args.path !== 'string') return;
-            if (typeof result !== 'string' || result.startsWith('Error') || result.startsWith('User denied')) return;
+            if (typeof result !== 'string' || result.startsWith('User denied')) return;
+            if (result.startsWith('Error')) {
+              turnErrors += 1;
+              return;
+            }
+            turnFileOps.push({ path: args.path, change: editSnapshot === null ? '+' : '~' });
             const after = readFileOrNull(args.path);
             spinner.stop();
             console.log(`\n${formatDiff(args.path, editSnapshot ?? '', after ?? '', { colors: colorEnabled })}`);
@@ -551,15 +560,20 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
           if (claimsUnappliedChanges(assistantText, toolsExecuted)) {
             console.log(yellow('⚠ the model described changes but did not modify any files — ask it to apply them using its tools'));
           }
+          if (turnFileOps.length || turnErrors) {
+            console.log(`\n${renderDoneSummary(turnFileOps, { errors: turnErrors })}`);
+          }
           break;
         }
 
         const plan = parsePlanResponse(assistantText);
-        if (plan.text) {
+        if (plan.text && !planShownThisSession) {
           process.stdout.write(`\n${magenta('◆')}  ${highlighter.highlight(plan.text)}${highlighter.flush()}\n`);
         }
         if (hasStructuredPlan(plan)) {
-          console.log(`\n${renderPlan(plan)}`);
+          // first render shows the full box; refreshes after answered questions show only what changed
+          console.log(`\n${renderPlan(plan, planShownThisSession ? { update: true } : {})}`);
+          planShownThisSession = true;
         }
         if (plan.status === 'complete') {
           const choice = await selectMenu(rl, PLAN_IMPLEMENT_PROMPT, planCompletionOptions());

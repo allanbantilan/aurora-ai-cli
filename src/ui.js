@@ -599,3 +599,44 @@ export function renderPlan(
   out.push('', c.dim(h.repeat(Math.min(columns, 52))));
   return out.join('\n');
 }
+
+/**
+ * End-of-turn summary box: "╭─ AURORA DONE ─╮" with created/edited/error
+ * counts, the touched files, and a next-step prompt line. files entries are
+ * {path, change: '+'|'~'}; the same path reported twice keeps '+' if it was
+ * ever created this turn. Pure string builder.
+ */
+export function renderDoneSummary(
+  files,
+  { errors = 0, colors = colorEnabled, ascii = legacyConhost, columns = process.stdout.columns || 80 } = {}
+) {
+  const c = colors
+    ? { cyan: forceCyan, dim: forceDim, green: forceGreen, yellow: forceYellow }
+    : { cyan: (s) => s, dim: (s) => s, green: (s) => s, yellow: (s) => s };
+  const [h, v, tl, tr, bl, br] = ascii ? ['-', '|', '+', '+', '+', '+'] : ['─', '│', '╭', '╮', '╰', '╯'];
+
+  const byPath = new Map();
+  for (const f of files ?? []) {
+    const prev = byPath.get(f.path);
+    byPath.set(f.path, prev === '+' ? '+' : f.change);
+  }
+  const list = [...byPath.entries()];
+  const created = list.filter(([, ch]) => ch === '+').length;
+  const edited = list.length - created;
+  const parts = [];
+  if (created) parts.push(`${created} file${created === 1 ? '' : 's'} created`);
+  if (edited) parts.push(`${edited} file${edited === 1 ? '' : 's'} edited`);
+  parts.push(`${errors} error${errors === 1 ? '' : 's'}`);
+  const summary = parts.join(' · ');
+
+  const label = ' AURORA DONE ';
+  const inner = Math.max(label.length + 1, Math.min(columns - 2, Math.max(summary.length + 4, 44)));
+  const out = [
+    c.dim(`${tl}${h}${label}${h.repeat(Math.max(0, inner - label.length - 1))}${tr}`),
+    `${c.dim(v)}  ${summary}`,
+    c.dim(`${bl}${h.repeat(Math.max(0, inner))}${br}`),
+  ];
+  for (const [p, ch] of list) out.push(`   ${(ch === '+' ? c.green : c.yellow)(ch)}  ${c.cyan(p)}`);
+  out.push('', `${c.cyan('❯')} What should Aurora do next?`);
+  return out.join('\n');
+}
