@@ -27,13 +27,15 @@ import {
 
 const COMMANDS = [
   ['/model', 'select models (order = fallback priority)'],
-  ['/permission', 'select Permission, Auto, or Plan mode'],
+  ['/permission', 'select Default or Auto mode'],
+  ['/plan', 'plan a feature without implementing it'],
   ['/clear', 'reset conversation'],
   ['/help', 'show this help'],
   ['/exit', 'quit'],
 ];
 
 export const AUTO_WARNING = 'Enable Auto mode? All file changes and shell commands will run without approval.';
+export const PLAN_PROMPT = 'What feature should Aurora plan? > ';
 
 export function buildInputPrompt(cwd) {
   return `${dim(cwd)} ${cyan('❯')} `;
@@ -43,7 +45,6 @@ export function modeOptions() {
   return [
     { label: 'Default — ask for approval before file changes and shell commands', value: 'permission' },
     { label: 'Auto — run all file changes and shell commands without approval', value: 'auto' },
-    { label: 'Plan — read-only inspection and planning', value: 'plan' },
     { label: 'Cancel — keep the current mode', value: null, isEscape: true },
   ];
 }
@@ -65,6 +66,22 @@ export function applyModeSelection({ selectedMode, mode = 'permission', messages
     mode: selectedMode,
     input,
     messages: [{ role: 'system', content: systemPrompt(cwd, selectedMode) }, ...messages.slice(1)],
+  };
+}
+
+export function beginPlanTurn({ mode, messages, cwd, feature }) {
+  return {
+    previousMode: mode,
+    mode: 'plan',
+    input: `Plan this feature without implementing it: ${feature}`,
+    messages: [{ role: 'system', content: systemPrompt(cwd, 'plan') }, ...messages.slice(1)],
+  };
+}
+
+export function endPlanTurn({ previousMode, messages, cwd }) {
+  return {
+    mode: previousMode,
+    messages: [{ role: 'system', content: systemPrompt(cwd, previousMode) }, ...messages.slice(1)],
   };
 }
 
@@ -249,7 +266,8 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
 
   while (true) {
     console.log(`\n${rule()}`);
-    const input = await readInput();
+    let input = await readInput();
+    let previousModeAfterTurn = null;
     console.log(rule());
     if (!input) continue;
 
@@ -280,6 +298,18 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
       messages = switched.messages;
       console.log(changed ? yellow(`mode: ${modeLabel(mode)}`) : dim(`mode unchanged: ${modeLabel(mode)}`));
       continue;
+    }
+    if (input === '/plan') {
+      const feature = (await rl.question(PLAN_PROMPT)).trim();
+      if (!feature) {
+        console.log(dim('plan cancelled'));
+        continue;
+      }
+      const planning = beginPlanTurn({ mode, messages, cwd: process.cwd(), feature });
+      previousModeAfterTurn = planning.previousMode;
+      mode = planning.mode;
+      messages = planning.messages;
+      input = planning.input;
     }
     if (input.startsWith('/')) {
       console.log(`Unknown command: ${input} — try /help`);
@@ -346,6 +376,11 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
       console.error(`\n${red(`[error] ${err.message}`)}${hint}`);
     } finally {
       spinner.stop();
+      if (previousModeAfterTurn) {
+        const restored = endPlanTurn({ previousMode: previousModeAfterTurn, messages, cwd: process.cwd() });
+        mode = restored.mode;
+        messages = restored.messages;
+      }
     }
   }
 

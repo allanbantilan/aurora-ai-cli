@@ -10,6 +10,9 @@ import {
   completeCommand,
   commandList,
   modeOptions,
+  beginPlanTurn,
+  endPlanTurn,
+  PLAN_PROMPT,
   promoteModel,
   shouldConfirmAuto,
 } from '../src/repl.js';
@@ -100,7 +103,7 @@ test('completeCommand completes a unique prefix', () => {
 
 test('completeCommand lists all commands for bare slash', () => {
   const [hits] = completeCommand('/');
-  assert.deepEqual(hits, ['/model', '/permission', '/clear', '/help', '/exit']);
+  assert.deepEqual(hits, ['/model', '/permission', '/plan', '/clear', '/help', '/exit']);
 });
 
 test('completeCommand returns no hits for non-command input', () => {
@@ -110,7 +113,7 @@ test('completeCommand returns no hits for non-command input', () => {
 
 test('commandList includes every command with a description', () => {
   const text = commandList();
-  for (const c of ['/model', '/permission', '/clear', '/help', '/exit']) assert.match(text, new RegExp(c.replace('/', '\\/')));
+  for (const c of ['/model', '/permission', '/plan', '/clear', '/help', '/exit']) assert.match(text, new RegExp(c.replace('/', '\\/')));
 });
 
 test('promoteModel puts the fallback first and drops the failed model', () => {
@@ -127,13 +130,13 @@ test('buildInputPrompt is plain and does not show the active mode', () => {
   assert.doesNotMatch(prompt, /\[Permission\]|\[Auto\]|\[Plan\]/);
 });
 
-test('modeOptions lists every mode with behavior descriptions', () => {
-  assert.deepEqual(modeOptions().map((o) => o.value), ['permission', 'auto', 'plan', null]);
+test('modeOptions lists Default and Auto but not Plan', () => {
+  assert.deepEqual(modeOptions().map((o) => o.value), ['permission', 'auto', null]);
   const labels = modeOptions().map((o) => o.label).join('\n');
   assert.match(labels, /Default.*approval/i);
   assert.doesNotMatch(labels, /Permission/);
   assert.match(labels, /Auto.*without approval/i);
-  assert.match(labels, /Plan.*read-only/i);
+  assert.doesNotMatch(labels, /Plan/);
 });
 
 test('applyModeSelection updates system message and preserves input', () => {
@@ -176,5 +179,30 @@ test('Auto confirmation clearly warns and defaults to cancel', () => {
   assert.equal(autoConfirmationOptions()[0].value, 'cancel');
   assert.equal(autoConfirmationOptions()[0].isEscape, true);
   assert.equal(autoConfirmationOptions()[1].value, 'enable');
+});
+
+test('PLAN_PROMPT asks for the feature to plan', () => {
+  assert.match(PLAN_PROMPT, /feature/i);
+  assert.match(PLAN_PROMPT, /plan/i);
+});
+
+test('beginPlanTurn temporarily switches to Plan and creates the planning request', () => {
+  const messages = [{ role: 'system', content: 'old system' }, { role: 'user', content: 'earlier' }];
+  const result = beginPlanTurn({ mode: 'auto', messages, cwd: 'C:\\project', feature: 'add authentication' });
+
+  assert.equal(result.previousMode, 'auto');
+  assert.equal(result.mode, 'plan');
+  assert.match(result.input, /add authentication/);
+  assert.match(result.messages[0].content, /Active mode: Plan/);
+  assert.deepEqual(result.messages.slice(1), messages.slice(1));
+});
+
+test('endPlanTurn restores the previous execution mode and system prompt', () => {
+  const messages = [{ role: 'system', content: 'plan system' }, { role: 'assistant', content: 'the plan' }];
+  const result = endPlanTurn({ previousMode: 'auto', messages, cwd: 'C:\\project' });
+
+  assert.equal(result.mode, 'auto');
+  assert.match(result.messages[0].content, /Active mode: Auto/);
+  assert.deepEqual(result.messages.slice(1), messages.slice(1));
 });
 
