@@ -97,6 +97,11 @@ const CREATED_PREVIEW_LINES = 15; // created/deleted files preview this many lin
 const MAX_RENDERED_LINES = 200; // edited diffs are capped at this many body lines
 
 const ESC = String.fromCharCode(27);
+const ANSI_RE = /\x1b\[[0-9;]*m|\x1b/g; // SGR sequences, then any stray ESC
+
+/** File content can legally contain ANSI codes (logs, build output); strip them so they can't pierce the row styling. */
+const sanitize = (text) => text.replace(ANSI_RE, '');
+
 const wrapAnsi = (open, close) => (s) => `${ESC}[${open}m${s}${ESC}[${close}m`;
 const identity = (s) => s;
 
@@ -116,9 +121,10 @@ function styles(colors) {
 /** One rendered diff row: padded line number, marker, text — styled per op type. */
 function renderOp(op, width, st) {
   const num = String(op.type === 'add' ? op.newNum : op.oldNum).padStart(width);
-  if (op.type === 'add') return `${st.greenFg(num)} ${st.greenBg(`+ ${op.text}`)}`;
-  if (op.type === 'del') return `${st.redFg(num)} ${st.redBg(`- ${op.text}`)}`;
-  return st.dim(`${num}   ${op.text}`);
+  const text = sanitize(op.text);
+  if (op.type === 'add') return `${st.greenFg(num)} ${st.greenBg(`+ ${text}`)}`;
+  if (op.type === 'del') return `${st.redFg(num)} ${st.redBg(`- ${text}`)}`;
+  return st.dim(`${num}   ${text}`);
 }
 
 function numberWidth(ops) {

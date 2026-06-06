@@ -140,3 +140,10 @@ test('formatDiff: huge edited diff is capped with a more-lines tail', () => {
   assert.equal(bodyLines <= 205, true);
   assert.match(out, /… \d+ more lines/);
 });
+
+test('formatDiff: ANSI escapes embedded in file content are stripped from output', () => {
+  const esc = String.fromCharCode(27);
+  const out = formatDiff('log.txt', `plain\n`, `plain\n${esc}[0mcolored${esc}[31m\n`, { colors: false });
+  assert.equal(out.includes(esc), false);
+  assert.match(out, /\+ colored/);
+});
