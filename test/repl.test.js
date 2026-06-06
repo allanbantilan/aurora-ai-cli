@@ -11,10 +11,14 @@ import {
   commandList,
   modeOptions,
   beginPlanTurn,
+  completePlanTurn,
   formatPlanAnswers,
   parsePlanResponse,
+  planActivityText,
   planChoiceOptions,
+  planCompletionOptions,
   endPlanTurn,
+  PLAN_IMPLEMENT_PROMPT,
   PLAN_PROMPT,
   promoteModel,
   shouldConfirmAuto,
@@ -248,5 +252,44 @@ test('formatPlanAnswers sends all selected answers back together', () => {
     ]),
     'Answers to planning questions:\n1. Which route?\n   Replace home page\n2. Animations?\n   No animations'
   );
+});
+
+test('plan completion asks for approval and defaults to proceeding', () => {
+  assert.match(PLAN_IMPLEMENT_PROMPT, /proceed/i);
+  const options = planCompletionOptions();
+  assert.deepEqual(options.map((option) => option.value), ['proceed', 'return']);
+  assert.match(options[0].label, /\(Recommended\)$/);
+  assert.equal(options[1].isEscape, true);
+});
+
+test('planActivityText shows elapsed planning seconds', () => {
+  assert.equal(planActivityText(1_000, 4_600), 'planning... (4s)');
+});
+
+test('completePlanTurn restores the previous mode and starts approved implementation', () => {
+  const messages = [{ role: 'system', content: 'plan system' }, { role: 'assistant', content: 'the approved plan' }];
+  const result = completePlanTurn({
+    choice: 'proceed',
+    previousMode: 'auto',
+    messages,
+    cwd: 'C:\\project',
+  });
+
+  assert.equal(result.mode, 'auto');
+  assert.match(result.messages[0].content, /Active mode: Auto/);
+  assert.match(result.input, /implement the approved plan/i);
+});
+
+test('completePlanTurn restores the previous mode without implementation when declined', () => {
+  const result = completePlanTurn({
+    choice: 'return',
+    previousMode: 'permission',
+    messages: [{ role: 'system', content: 'plan system' }],
+    cwd: 'C:\\project',
+  });
+
+  assert.equal(result.mode, 'permission');
+  assert.match(result.messages[0].content, /Active mode: Default/);
+  assert.equal(result.input, '');
 });
 

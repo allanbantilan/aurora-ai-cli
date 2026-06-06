@@ -36,6 +36,7 @@ const COMMANDS = [
 
 export const AUTO_WARNING = 'Enable Auto mode? All file changes and shell commands will run without approval.';
 export const PLAN_PROMPT = 'What feature should Aurora plan? > ';
+export const PLAN_IMPLEMENT_PROMPT = 'Proceed with implementation?';
 const PLAN_PROTOCOL_RE = /\n?<!-- AURORA_PLAN_PROTOCOL\s*\n([\s\S]*?)\n-->\s*$/;
 
 export function buildInputPrompt(cwd) {
@@ -83,6 +84,25 @@ export function endPlanTurn({ previousMode, messages, cwd }) {
   return {
     mode: previousMode,
     messages: [{ role: 'system', content: systemPrompt(cwd, previousMode) }, ...messages.slice(1)],
+  };
+}
+
+export function planActivityText(startedAt, now = Date.now()) {
+  return `planning... (${Math.round((now - startedAt) / 1000)}s)`;
+}
+
+export function planCompletionOptions() {
+  return [
+    { label: 'Proceed with implementation (Recommended)', value: 'proceed' },
+    { label: 'Return to prompt', value: 'return', isEscape: true },
+  ];
+}
+
+export function completePlanTurn({ choice, previousMode, messages, cwd }) {
+  const restored = endPlanTurn({ previousMode, messages, cwd });
+  return {
+    ...restored,
+    input: choice === 'proceed' ? 'Implement the approved plan above.' : '',
   };
 }
 
@@ -394,7 +414,8 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
         let assistantText = '';
         let aiPrefixPrinted = false;
         toolsExecuted = [];
-        spinner.start('thinking...');
+        const planActivityStarted = Date.now();
+        spinner.start(planningSession ? () => planActivityText(planActivityStarted) : 'thinking...');
         await runTurn({
           client,
           models: [...chain],
@@ -403,8 +424,8 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
           permissions: trackedPermissions,
           onText: (t) => {
             assistantText += t;
-            spinner.stop();
             if (planningSession) return;
+            spinner.stop();
             if (!aiPrefixPrinted) {
               aiPrefixPrinted = true;
               process.stdout.write(`\n${magenta('◆')}  `);
@@ -422,14 +443,14 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
             reasoningStarted = 0;
             spinner.stop();
             console.log(`\n${magenta(`[tool] ${name}`)} ${dim(JSON.stringify(args).slice(0, 160))}`);
-            spinner.start('thinking...');
+            spinner.start(planningSession ? () => planActivityText(planActivityStarted) : 'thinking...');
           },
           onRetry: (attempt, retries, delayMs) =>
             spinner.update(`rate-limited, retrying in ${delayMs / 1000}s (${attempt}/${retries})...`),
           onModelSwitch: (from, to) => {
             spinner.stop();
             console.log(yellow(`⚠ ${shortModelName(from)} unavailable — switched to ${shortModelName(to)}`));
-            spinner.start('thinking...');
+            spinner.start(planningSession ? () => planActivityText(planActivityStarted) : 'thinking...');
             chain = promoteModel(chain, from, to);
             saveModels(chain);
           },
@@ -450,7 +471,22 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
         if (plan.text) {
           process.stdout.write(`\n${magenta('◆')}  ${highlighter.highlight(plan.text)}${highlighter.flush()}\n`);
         }
-        if (plan.status === 'complete') break;
+        if (plan.status === 'complete') {
+          const choice = await selectMenu(rl, PLAN_IMPLEMENT_PROMPT, planCompletionOptions());
+          const completed = completePlanTurn({
+            choice,
+            previousMode: previousModeAfterTurn,
+            messages,
+            cwd: process.cwd(),
+          });
+          mode = completed.mode;
+          messages = completed.messages;
+          input = completed.input;
+          previousModeAfterTurn = null;
+          planningSession = false;
+          if (!input) break;
+          continue;
+        }
         input = formatPlanAnswers(await askPlanQuestions(plan.questions));
       }
     } catch (err) {
