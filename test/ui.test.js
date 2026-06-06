@@ -285,8 +285,8 @@ test('formatToolPreview renders write_file content as a diff', () => {
   const p = formatToolPreview('write_file', { path: 'a.html', content: '<p>x</p>\n<i>y</i>' }, { colors: true });
   assert.match(p, /\[write_file\][^\n]*a\.html/);
   assert.match(p, /Created .*a\.html/); // new file → Created diff
-  assert.match(p, /\+ <p>x<\/p>/);
-  assert.match(p, /\+ <i>y<\/i>/);
+  assert.match(p, /\+.* <p>x<\/p>/); // fg reset sits between marker and text in tinted rows
+  assert.match(p, /\+.* <i>y<\/i>/);
 });
 
 test('formatToolPreview renders edit_file as remove/insert blocks', () => {
@@ -305,8 +305,8 @@ test('edit_file preview shows diff when old_string is unique and file is readabl
   fs.writeFileSync(f, 'a\nb\nc\nTARGET\nd\n');
   const p = formatToolPreview('edit_file', { path: f, old_string: 'TARGET', new_string: 'X' }, { colors: true });
   assert.match(p, /Edited .*x\.js/); // shows diff for successful replacement
-  assert.match(p, /- TARGET/);
-  assert.match(p, /\+ X/);
+  assert.match(p, /-.* TARGET/); // fg reset sits between marker and text in tinted rows
+  assert.match(p, /\+.* X/);
   fs.rmSync(dir, { recursive: true, force: true });
 });
 

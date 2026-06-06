@@ -110,20 +110,21 @@ function styles(colors) {
     return { redBg: identity, greenBg: identity, redFg: identity, greenFg: identity, dim: identity };
   }
   return {
-    redBg: wrapAnsi(41, 49),
-    greenBg: wrapAnsi(42, 49),
-    redFg: wrapAnsi(31, 39),
-    greenFg: wrapAnsi(32, 39),
+    // muted truecolor row tints (Codex-style) — the bright 41/42 palette is unreadable
+    redBg: wrapAnsi('48;2;63;29;29', 49),
+    greenBg: wrapAnsi('48;2;27;58;36', 49),
+    redFg: wrapAnsi('38;2;248;81;73', 39),
+    greenFg: wrapAnsi('38;2;86;211;100', 39),
     dim: wrapAnsi(2, 22),
   };
 }
 
-/** One rendered diff row: padded line number, marker, text — styled per op type. */
+/** One rendered diff row: padded line number, marker, text — the whole row is tinted per op type. */
 function renderOp(op, width, st) {
   const num = String(op.type === 'add' ? op.newNum : op.oldNum).padStart(width);
   const text = sanitize(op.text);
-  if (op.type === 'add') return `${st.greenFg(num)} ${st.greenBg(`+ ${text}`)}`;
-  if (op.type === 'del') return `${st.redFg(num)} ${st.redBg(`- ${text}`)}`;
+  if (op.type === 'add') return st.greenBg(`${st.greenFg(`${num} +`)} ${text}`);
+  if (op.type === 'del') return st.redBg(`${st.redFg(`${num} -`)} ${text}`);
   return st.dim(`${num}   ${text}`);
 }
 

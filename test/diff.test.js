@@ -126,10 +126,12 @@ test('formatDiff: colors=false output contains no ANSI escapes', () => {
   assert.equal(out.includes(ESC), false);
 });
 
-test('formatDiff: colors=true wraps removed lines in red bg and added in green bg', () => {
+test('formatDiff: colors=true tints whole removed rows dark red and added rows dark green', () => {
   const out = formatDiff('a.js', 'one\ntwo\n', 'one\nTWO\n', { colors: true });
-  assert.match(out, new RegExp(`${ESC}\\[41m- two${ESC}\\[49m`));
-  assert.match(out, new RegExp(`${ESC}\\[42m\\+ TWO${ESC}\\[49m`));
+  // Codex-style muted truecolor row backgrounds, closed with 49 on the same line
+  assert.match(out, new RegExp(`${ESC}\\[48;2;63;29;29m.*2 -.* two${ESC}\\[49m`));
+  assert.match(out, new RegExp(`${ESC}\\[48;2;27;58;36m.*2 \\+.* TWO${ESC}\\[49m`));
+  assert.doesNotMatch(out, new RegExp(`${ESC}\\[4[12]m`)); // bright legacy palette is gone
 });
 
 test('formatDiff: huge edited diff is capped with a more-lines tail', () => {
