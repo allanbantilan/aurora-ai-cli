@@ -1,4 +1,6 @@
 import readline from 'node:readline/promises';
+import fs from 'node:fs';
+import path from 'node:path';
 import { printBanner } from './banner.js';
 import { runTurn } from './agent.js';
 import * as tools from './tools/index.js';
@@ -6,6 +8,7 @@ import { createPermissions } from './permissions.js';
 import { systemPrompt } from './prompt.js';
 import { fetchModelStatus } from './client.js';
 import { modeLabel } from './modes.js';
+import { formatDiff } from './diff.js';
 import {
   createSpinner,
   CodeHighlighter,
@@ -23,6 +26,8 @@ import {
   magenta,
   red,
   dim,
+  renderPlan,
+  colorEnabled,
 } from './ui.js';
 
 const COMMANDS = [
@@ -383,6 +388,18 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
     return answers;
   };
 
+  const DIFF_TOOLS = new Set(['write_file', 'edit_file']);
+  // Resolves like the tools do (they default to process.cwd() via resolveSafe);
+  // if executeTool ever gets a custom cwd, this must follow it.
+  const readFileOrNull = (p) => {
+    try {
+      return fs.readFileSync(path.resolve(process.cwd(), p), 'utf8');
+    } catch {
+      return null;
+    }
+  };
+  let editSnapshot = null;
+
   while (true) {
     console.log(`\n${rule()}`);
     let input = await readInput();
@@ -473,9 +490,20 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
             spinner.update(() => `reasoning... (${Math.round((Date.now() - reasoningStarted) / 1000)}s)`);
           },
           onToolStart: (name, args) => {
+            if (DIFF_TOOLS.has(name) && typeof args.path === 'string') {
+              editSnapshot = readFileOrNull(args.path);
+            }
             reasoningStarted = 0;
             spinner.stop();
             console.log(`\n${magenta(`[tool] ${name}`)} ${dim(JSON.stringify(args).slice(0, 160))}`);
+            spinner.start(planningSession ? () => planActivityText(planActivityStarted) : 'thinking...');
+          },
+          onToolEnd: (name, args, result) => {
+            if (!DIFF_TOOLS.has(name) || typeof args.path !== 'string') return;
+            if (typeof result !== 'string' || result.startsWith('Error') || result.startsWith('User denied')) return;
+            const after = readFileOrNull(args.path);
+            spinner.stop();
+            console.log(`\n${formatDiff(args.path, editSnapshot ?? '', after ?? '', { colors: colorEnabled })}`);
             spinner.start(planningSession ? () => planActivityText(planActivityStarted) : 'thinking...');
           },
           onRetry: (attempt, retries, delayMs) =>
@@ -503,6 +531,9 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
         const plan = parsePlanResponse(assistantText);
         if (plan.text) {
           process.stdout.write(`\n${magenta('◆')}  ${highlighter.highlight(plan.text)}${highlighter.flush()}\n`);
+        }
+        if (hasStructuredPlan(plan)) {
+          console.log(`\n${renderPlan(plan)}`);
         }
         if (plan.status === 'complete') {
           const choice = await selectMenu(rl, PLAN_IMPLEMENT_PROMPT, planCompletionOptions());
