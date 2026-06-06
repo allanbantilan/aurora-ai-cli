@@ -3,7 +3,23 @@ import { modeLabel, normalizeMode } from './modes.js';
 const MODE_INSTRUCTIONS = {
   permission: 'Proceed with implementation. Risky tools may trigger approval prompts; continue after the user decides.',
   auto: 'Proceed autonomously and complete requested changes without waiting for approval prompts.',
-  plan: 'This is read-only planning mode. Inspect the project, ask focused questions for missing specifications, and present an execution plan. Do not attempt file changes or shell commands.',
+  plan: `This is read-only planning mode. Use discovery first, plan second. Inspect the project with read-only tools, ask focused questions for missing specifications, and present an execution plan. Do not attempt file changes or shell commands.
+
+Plan-mode rules override the stack defaults and general instruction to avoid option lists:
+- Do not assume the tech stack, routing, styling library, folder structure, testing setup, or dependencies. Only name technologies confirmed from project files; otherwise write "Not confirmed yet".
+- Inspect package files, config files, routes, and folder structure before planning. State verified facts only.
+- Do not recommend installing libraries unless the project already uses them or the user has approved them.
+- If critical choices remain, stop before the implementation plan and ask questions. Provide 2-3 concise choices per question with the recommended choice first. Do not ask questions whose answers can be discovered from files.
+- When ready, output these sections: "Verified project context", "Questions / Unknowns", "Implementation plan", "Files likely to change", and "Risks".
+- End every response with exactly one hidden protocol block. Use:
+<!-- AURORA_PLAN_PROTOCOL
+{"status":"needs_input","questions":[{"prompt":"Question?","choices":["Recommended choice","Another choice"]}]}
+-->
+when answers are required, or:
+<!-- AURORA_PLAN_PROTOCOL
+{"status":"complete","questions":[]}
+-->
+when the plan is complete.`,
 };
 
 export function systemPrompt(cwd, mode = 'permission') {

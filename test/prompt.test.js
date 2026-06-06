@@ -70,6 +70,16 @@ test('systemPrompt carries Claude Code-style plan-mode instructions', () => {
   assert.match(p, /ask focused questions/i);
   assert.match(p, /execution plan/i);
   assert.match(p, /do not attempt/i);
+  assert.match(p, /discovery first/i);
+  assert.match(p, /Not confirmed yet/);
+  assert.match(p, /do not assume/i);
+  assert.match(p, /AURORA_PLAN_PROTOCOL/);
+  assert.match(p, /Verified project context/);
+  assert.match(p, /Questions \/ Unknowns/);
+  assert.match(p, /Files likely to change/);
+  assert.match(p, /Risks/);
+  assert.match(p, /recommended choice first/i);
+  assert.match(p, /Do not recommend installing libraries/i);
 });
 
 test('systemPrompt treats invalid modes as permission mode', () => {

@@ -36,6 +36,7 @@ const COMMANDS = [
 
 export const AUTO_WARNING = 'Enable Auto mode? All file changes and shell commands will run without approval.';
 export const PLAN_PROMPT = 'What feature should Aurora plan? > ';
+const PLAN_PROTOCOL_RE = /\n?<!-- AURORA_PLAN_PROTOCOL\s*\n([\s\S]*?)\n-->\s*$/;
 
 export function buildInputPrompt(cwd) {
   return `${dim(cwd)} ${cyan('❯')} `;
@@ -83,6 +84,51 @@ export function endPlanTurn({ previousMode, messages, cwd }) {
     mode: previousMode,
     messages: [{ role: 'system', content: systemPrompt(cwd, previousMode) }, ...messages.slice(1)],
   };
+}
+
+export function parsePlanResponse(response) {
+  const match = response.match(PLAN_PROTOCOL_RE);
+  const text = (match ? response.slice(0, match.index) : response).trimEnd();
+  if (!match) return { text, status: 'complete', questions: [] };
+
+  try {
+    const protocol = JSON.parse(match[1]);
+    const questions = Array.isArray(protocol.questions)
+      ? protocol.questions
+          .filter(
+            (question) =>
+              typeof question?.prompt === 'string' &&
+              Array.isArray(question.choices) &&
+              question.choices.length >= 2 &&
+              question.choices.length <= 3 &&
+              question.choices.every((choice) => typeof choice === 'string')
+          )
+          .map(({ prompt, choices }) => ({ prompt, choices }))
+      : [];
+    if (protocol.status === 'needs_input' && questions.length) {
+      return { text, status: 'needs_input', questions };
+    }
+  } catch {
+    // Malformed protocol is treated as a completed response.
+  }
+  return { text, status: 'complete', questions: [] };
+}
+
+export function planChoiceOptions(choices) {
+  return [
+    ...choices.map((choice, index) => ({
+      label: index === 0 ? `${choice} (Recommended)` : choice,
+      value: index,
+    })),
+    { label: 'Type a custom answer', value: 'custom' },
+  ];
+}
+
+export function formatPlanAnswers(answers) {
+  return [
+    'Answers to planning questions:',
+    ...answers.flatMap(({ prompt, answer }, index) => [`${index + 1}. ${prompt}`, `   ${answer}`]),
+  ].join('\n');
 }
 
 /** readline completer: Tab after "/" completes among the slash commands. */
@@ -264,6 +310,26 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
     }
   };
 
+  const askPlanQuestions = async (questions) => {
+    const answers = [];
+    for (const [index, question] of questions.entries()) {
+      const selected = await selectMenu(
+        rl,
+        `Question ${index + 1} of ${questions.length}: ${question.prompt}`,
+        planChoiceOptions(question.choices)
+      );
+      let answer = question.choices[selected];
+      if (selected === 'custom') {
+        do {
+          answer = (await rl.question('Custom answer > ')).trim();
+        } while (!answer);
+      }
+      console.log(dim(`✓ ${question.prompt} ${answer}`));
+      answers.push({ prompt: question.prompt, answer });
+    }
+    return answers;
+  };
+
   while (true) {
     console.log(`\n${rule()}`);
     let input = await readInput();
@@ -316,60 +382,76 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
       continue;
     }
 
-    messages.push({ role: 'user', content: input });
-    const highlighter = new CodeHighlighter();
-    const writeModelText = createEchoSuppressor(input, (t) => {
-      process.stdout.write(highlighter.highlight(t));
-    });
-    let reasoningStarted = 0;
-    let assistantText = '';
-    let aiPrefixPrinted = false;
-    toolsExecuted = [];
-    spinner.start('thinking...');
+    let planningSession = previousModeAfterTurn !== null;
     try {
-      await runTurn({
-        client,
-        models: [...chain],
-        messages,
-        tools,
-        permissions: trackedPermissions,
-        onText: (t) => {
-          assistantText += t;
-          spinner.stop();
-          if (!aiPrefixPrinted) {
-            aiPrefixPrinted = true;
-            process.stdout.write(`\n${magenta('◆')}  `);
+      while (input) {
+        messages.push({ role: 'user', content: input });
+        const highlighter = new CodeHighlighter();
+        const writeModelText = createEchoSuppressor(input, (t) => {
+          process.stdout.write(highlighter.highlight(t));
+        });
+        let reasoningStarted = 0;
+        let assistantText = '';
+        let aiPrefixPrinted = false;
+        toolsExecuted = [];
+        spinner.start('thinking...');
+        await runTurn({
+          client,
+          models: [...chain],
+          messages,
+          tools,
+          permissions: trackedPermissions,
+          onText: (t) => {
+            assistantText += t;
+            spinner.stop();
+            if (planningSession) return;
+            if (!aiPrefixPrinted) {
+              aiPrefixPrinted = true;
+              process.stdout.write(`\n${magenta('◆')}  `);
+            }
+            writeModelText(t);
+          },
+          onReasoning: () => {
+            if (reasoningStarted) return; // installed once per reasoning phase
+            reasoningStarted = Date.now();
+            // time-driven: the spinner re-renders this every frame, so the
+            // elapsed counter keeps ticking even when reasoning deltas pause
+            spinner.update(() => `reasoning... (${Math.round((Date.now() - reasoningStarted) / 1000)}s)`);
+          },
+          onToolStart: (name, args) => {
+            reasoningStarted = 0;
+            spinner.stop();
+            console.log(`\n${magenta(`[tool] ${name}`)} ${dim(JSON.stringify(args).slice(0, 160))}`);
+            spinner.start('thinking...');
+          },
+          onRetry: (attempt, retries, delayMs) =>
+            spinner.update(`rate-limited, retrying in ${delayMs / 1000}s (${attempt}/${retries})...`),
+          onModelSwitch: (from, to) => {
+            spinner.stop();
+            console.log(yellow(`⚠ ${shortModelName(from)} unavailable — switched to ${shortModelName(to)}`));
+            spinner.start('thinking...');
+            chain = promoteModel(chain, from, to);
+            saveModels(chain);
+          },
+        });
+        spinner.stop();
+
+        if (!planningSession) {
+          writeModelText.flush();
+          process.stdout.write(highlighter.flush());
+          console.log();
+          if (claimsUnappliedChanges(assistantText, toolsExecuted)) {
+            console.log(yellow('⚠ the model described changes but did not modify any files — ask it to apply them using its tools'));
           }
-          writeModelText(t);
-        },
-        onReasoning: () => {
-          if (reasoningStarted) return; // installed once per reasoning phase
-          reasoningStarted = Date.now();
-          // time-driven: the spinner re-renders this every frame, so the
-          // elapsed counter keeps ticking even when reasoning deltas pause
-          spinner.update(() => `reasoning... (${Math.round((Date.now() - reasoningStarted) / 1000)}s)`);
-        },
-        onToolStart: (name, args) => {
-          reasoningStarted = 0;
-          spinner.stop();
-          console.log(`\n${magenta(`[tool] ${name}`)} ${dim(JSON.stringify(args).slice(0, 160))}`);
-          spinner.start('thinking...');
-        },
-        onRetry: (attempt, retries, delayMs) =>
-          spinner.update(`rate-limited, retrying in ${delayMs / 1000}s (${attempt}/${retries})...`),
-        onModelSwitch: (from, to) => {
-          spinner.stop();
-          console.log(yellow(`⚠ ${shortModelName(from)} unavailable — switched to ${shortModelName(to)}`));
-          spinner.start('thinking...');
-          chain = promoteModel(chain, from, to);
-          saveModels(chain);
-        },
-      });
-      writeModelText.flush();
-      process.stdout.write(highlighter.flush());
-      console.log();
-      if (claimsUnappliedChanges(assistantText, toolsExecuted)) {
-        console.log(yellow('⚠ the model described changes but did not modify any files — ask it to apply them using its tools'));
+          break;
+        }
+
+        const plan = parsePlanResponse(assistantText);
+        if (plan.text) {
+          process.stdout.write(`\n${magenta('◆')}  ${highlighter.highlight(plan.text)}${highlighter.flush()}\n`);
+        }
+        if (plan.status === 'complete') break;
+        input = formatPlanAnswers(await askPlanQuestions(plan.questions));
       }
     } catch (err) {
       const hint = err.status === 429 || err.status >= 500 ? ' — all models in your chain failed; try /model' : '';

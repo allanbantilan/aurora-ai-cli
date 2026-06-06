@@ -11,6 +11,9 @@ import {
   commandList,
   modeOptions,
   beginPlanTurn,
+  formatPlanAnswers,
+  parsePlanResponse,
+  planChoiceOptions,
   endPlanTurn,
   PLAN_PROMPT,
   promoteModel,
@@ -204,5 +207,46 @@ test('endPlanTurn restores the previous execution mode and system prompt', () =>
   assert.equal(result.mode, 'auto');
   assert.match(result.messages[0].content, /Active mode: Auto/);
   assert.deepEqual(result.messages.slice(1), messages.slice(1));
+});
+
+test('parsePlanResponse separates visible text from needs-input protocol', () => {
+  const response = `## Verified project context
+- Framework: Not confirmed yet
+
+<!-- AURORA_PLAN_PROTOCOL
+{"status":"needs_input","questions":[{"prompt":"Which route?","choices":["Replace home page","Add a new route"]}]}
+-->`;
+  const result = parsePlanResponse(response);
+
+  assert.match(result.text, /Verified project context/);
+  assert.doesNotMatch(result.text, /AURORA_PLAN_PROTOCOL/);
+  assert.equal(result.status, 'needs_input');
+  assert.deepEqual(result.questions, [{ prompt: 'Which route?', choices: ['Replace home page', 'Add a new route'] }]);
+});
+
+test('parsePlanResponse safely treats missing or malformed protocol as complete', () => {
+  assert.deepEqual(parsePlanResponse('plain plan'), { text: 'plain plan', status: 'complete', questions: [] });
+  const malformed = parsePlanResponse('visible\n<!-- AURORA_PLAN_PROTOCOL\nnope\n-->');
+  assert.equal(malformed.text, 'visible');
+  assert.equal(malformed.status, 'complete');
+  assert.deepEqual(malformed.questions, []);
+});
+
+test('planChoiceOptions marks the first choice recommended and adds custom answer', () => {
+  const options = planChoiceOptions(['Use existing route', 'Add new route']);
+  assert.deepEqual(options.map((o) => o.value), [0, 1, 'custom']);
+  assert.match(options[0].label, /\(Recommended\)$/);
+  assert.doesNotMatch(options[1].label, /Recommended/);
+  assert.match(options[2].label, /custom answer/i);
+});
+
+test('formatPlanAnswers sends all selected answers back together', () => {
+  assert.equal(
+    formatPlanAnswers([
+      { prompt: 'Which route?', answer: 'Replace home page' },
+      { prompt: 'Animations?', answer: 'No animations' },
+    ]),
+    'Answers to planning questions:\n1. Which route?\n   Replace home page\n2. Animations?\n   No animations'
+  );
 });
 
