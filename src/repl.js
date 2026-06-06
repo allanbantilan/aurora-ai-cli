@@ -5,6 +5,7 @@ import * as tools from './tools/index.js';
 import { createPermissions } from './permissions.js';
 import { systemPrompt } from './prompt.js';
 import { fetchModelStatus } from './client.js';
+import { modeLabel } from './modes.js';
 import {
   createSpinner,
   CodeHighlighter,
@@ -26,10 +27,46 @@ import {
 
 const COMMANDS = [
   ['/model', 'select models (order = fallback priority)'],
+  ['/permission', 'select Permission, Auto, or Plan mode'],
   ['/clear', 'reset conversation'],
   ['/help', 'show this help'],
   ['/exit', 'quit'],
 ];
+
+export const AUTO_WARNING = 'Enable Auto mode? All file changes and shell commands will run without approval.';
+
+export function buildInputPrompt(cwd) {
+  return `${dim(cwd)} ${cyan('❯')} `;
+}
+
+export function modeOptions() {
+  return [
+    { label: 'Default — ask for approval before file changes and shell commands', value: 'permission' },
+    { label: 'Auto — run all file changes and shell commands without approval', value: 'auto' },
+    { label: 'Plan — read-only inspection and planning', value: 'plan' },
+    { label: 'Cancel — keep the current mode', value: null, isEscape: true },
+  ];
+}
+
+export function shouldConfirmAuto(selectedMode, autoConfirmed) {
+  return selectedMode === 'auto' && !autoConfirmed;
+}
+
+export function autoConfirmationOptions() {
+  return [
+    { label: 'Cancel — keep the current mode', value: 'cancel', isEscape: true },
+    { label: 'Enable Auto mode for this session', value: 'enable' },
+  ];
+}
+
+export function applyModeSelection({ selectedMode, mode = 'permission', messages, cwd, input = '' }) {
+  if (!selectedMode) return { mode, input, messages };
+  return {
+    mode: selectedMode,
+    input,
+    messages: [{ role: 'system', content: systemPrompt(cwd, selectedMode) }, ...messages.slice(1)],
+  };
+}
 
 /** readline completer: Tab after "/" completes among the slash commands. */
 export function completeCommand(line) {
@@ -39,11 +76,14 @@ export function completeCommand(line) {
 }
 
 export function commandList() {
-  return COMMANDS.map(([c, d]) => `${c.padEnd(7)} ${d}`).join('\n');
+  const width = Math.max(...COMMANDS.map(([c]) => c.length)) + 1;
+  return COMMANDS.map(([c, d]) => `${c.padEnd(width)} ${d}`).join('\n');
 }
 
 export async function startRepl({ client, models, initialChain, saveModels }) {
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout, completer: completeCommand });
+  let mode = 'permission';
+  let autoConfirmed = false;
 
   // readline intercepts Ctrl+C and emits SIGINT on the interface; without this
   // listener the process can never be interrupted (it just pauses stdin).
@@ -58,6 +98,17 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
   rl.on('close', () => process.exit(0));
 
   const spinner = createSpinner();
+
+  async function pickPermissionMode(currentMode) {
+    const selected = await selectMenu(rl, 'Select permission mode:', modeOptions());
+    if (!selected) return currentMode;
+    if (shouldConfirmAuto(selected, autoConfirmed)) {
+      const answer = await selectMenu(rl, AUTO_WARNING, autoConfirmationOptions());
+      if (answer !== 'enable') return currentMode;
+      autoConfirmed = true;
+    }
+    return selected;
+  }
 
   /** Multi-select picker with live status. Returns the (possibly unchanged) chain. */
   async function pickModels(currentChain) {
@@ -111,7 +162,7 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
     saveModels(chain);
   }
 
-  let messages = [{ role: 'system', content: systemPrompt(process.cwd()) }];
+  let messages = [{ role: 'system', content: systemPrompt(process.cwd(), mode) }];
 
   const permissions = createPermissions(async (toolName, args) => {
     spinner.stop();
@@ -140,7 +191,7 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
       dim(value === 'yes' ? '✓ allowed once' : value === 'always' ? '✓ allowed for this session' : '✗ denied')
     );
     return { choice: value };
-  });
+  }, () => mode);
 
   let toolsExecuted = [];
   const trackedPermissions = {
@@ -161,7 +212,7 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
 
   const ch = legacyConhost ? '-' : '─';
   const rule = () => dim(ch.repeat(process.stdout.columns || 80));
-  const prompt = () => `${dim(process.cwd())} ${cyan('❯')} `;
+  const prompt = () => buildInputPrompt(process.cwd());
 
   /**
    * Read one line of input. In interactive mode, typing "/" as the first
@@ -180,12 +231,10 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
         return (await rl.question(prompt(), { signal: ac.signal })).trim();
       } catch (err) {
         if (err.name !== 'AbortError') throw err;
-        // user typed "/": readline's abort cleanup printed "\r\n", leaving the
-        // echoed "prompt /" line above the cursor — move up and erase it, then
-        // hand the keyboard to the search menu
         rl.line = '';
         rl.cursor = 0;
         process.stdout.write('\x1B[1A\r\x1B[2K');
+        // user typed "/": hand the keyboard to the search menu
         const picked = await slashMenu(rl, COMMANDS);
         if (picked) {
           console.log(`${prompt()}${picked}`); // leave a record as if the user typed it
@@ -221,6 +270,15 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
         saveModels(chain);
       }
       console.log(dim(`model chain: ${chain.map(shortModelName).join(' → ')}`));
+      continue;
+    }
+    if (input === '/permission') {
+      const selectedMode = await pickPermissionMode(mode);
+      const switched = applyModeSelection({ selectedMode, mode, messages, cwd: process.cwd() });
+      const changed = switched.mode !== mode;
+      mode = switched.mode;
+      messages = switched.messages;
+      console.log(changed ? yellow(`mode: ${modeLabel(mode)}`) : dim(`mode unchanged: ${modeLabel(mode)}`));
       continue;
     }
     if (input.startsWith('/')) {

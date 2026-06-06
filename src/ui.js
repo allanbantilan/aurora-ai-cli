@@ -364,6 +364,7 @@ export function slashMenu(rl, commands) {
   return new Promise((resolve) => {
     let state = { all: commands, filter: '/', index: 0, done: false, cancelled: false, picked: null };
     let lastLines = 0;
+    const commandWidth = Math.max(...commands.map(([cmd]) => cmd.length)) + 1;
 
     const render = (redraw) => {
       if (redraw) process.stdout.write(`${ESC}[${lastLines}A`);
@@ -372,7 +373,7 @@ export function slashMenu(rl, commands) {
       let out = `${ESC}[0J${forceCyan('❯')} ${state.filter}\n`;
       let lines = 1;
       visible.forEach(([cmd, desc], i) => {
-        const row = `${i === cur ? '❯' : ' '} ${cmd.padEnd(7)} ${forceDim(desc)}`;
+        const row = `${i === cur ? '❯' : ' '} ${cmd.padEnd(commandWidth)} ${forceDim(desc)}`;
         out += `${i === cur ? forceCyan(row) : row}\n`;
         lines += 1;
       });

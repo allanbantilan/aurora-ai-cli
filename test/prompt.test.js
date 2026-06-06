@@ -50,3 +50,28 @@ test('systemPrompt stays small enough for free models', () => {
   // guardrail: the whole prompt must stay under ~1200 words
   assert.ok(systemPrompt('.').split(/\s+/).length < 1200);
 });
+
+test('systemPrompt carries permission-mode instructions by default', () => {
+  const p = systemPrompt('.');
+  assert.match(p, /Active mode: Default/);
+  assert.match(p, /approval prompts/);
+});
+
+test('systemPrompt carries auto-mode instructions', () => {
+  const p = systemPrompt('.', 'auto');
+  assert.match(p, /Active mode: Auto/);
+  assert.match(p, /without waiting for approval/i);
+});
+
+test('systemPrompt carries Claude Code-style plan-mode instructions', () => {
+  const p = systemPrompt('.', 'plan');
+  assert.match(p, /Active mode: Plan/);
+  assert.match(p, /read-only/i);
+  assert.match(p, /ask focused questions/i);
+  assert.match(p, /execution plan/i);
+  assert.match(p, /do not attempt/i);
+});
+
+test('systemPrompt treats invalid modes as permission mode', () => {
+  assert.match(systemPrompt('.', 'invalid'), /Active mode: Default/);
+});

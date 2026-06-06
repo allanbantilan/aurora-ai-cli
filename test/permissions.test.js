@@ -40,3 +40,49 @@ test('malformed answers count as deny', async () => {
   const perms = createPermissions(async () => 'banana');
   assert.equal((await perms.check('edit_file', { path: 'a', old_string: 'x', new_string: 'y' })).allowed, false);
 });
+
+test('auto mode allows risky tools without asking', async () => {
+  const perms = createPermissions(
+    async () => {
+      throw new Error('should not ask');
+    },
+    () => 'auto'
+  );
+  assert.deepEqual(await perms.check('write_file', { path: 'a', content: '' }), { allowed: true });
+  assert.deepEqual(await perms.check('run_command', { command: 'npm test' }), { allowed: true });
+});
+
+test('plan mode allows reads and blocks risky tools without asking', async () => {
+  const perms = createPermissions(
+    async () => {
+      throw new Error('should not ask');
+    },
+    () => 'plan'
+  );
+  assert.deepEqual(await perms.check('read_file', { path: 'a' }), { allowed: true });
+  for (const tool of ['write_file', 'edit_file', 'run_command']) {
+    const result = await perms.check(tool, {});
+    assert.equal(result.allowed, false);
+    assert.match(result.feedback, /Plan mode is read-only/);
+  }
+});
+
+test('plan mode overrides permission-mode session allow rules', async () => {
+  let mode = 'permission';
+  const perms = createPermissions(async () => ({ choice: 'always' }), () => mode);
+  assert.equal((await perms.check('write_file', {})).allowed, true);
+  mode = 'plan';
+  assert.equal((await perms.check('write_file', {})).allowed, false);
+  mode = 'permission';
+  assert.equal((await perms.check('write_file', {})).allowed, true);
+});
+
+test('invalid mode falls back to permission behavior', async () => {
+  let asks = 0;
+  const perms = createPermissions(async () => {
+    asks++;
+    return { choice: 'no' };
+  }, () => 'invalid');
+  assert.equal((await perms.check('run_command', {})).allowed, false);
+  assert.equal(asks, 1);
+});

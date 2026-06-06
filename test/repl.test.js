@@ -1,6 +1,18 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createEchoSuppressor, claimsUnappliedChanges, completeCommand, commandList, promoteModel } from '../src/repl.js';
+import {
+  applyModeSelection,
+  autoConfirmationOptions,
+  AUTO_WARNING,
+  buildInputPrompt,
+  createEchoSuppressor,
+  claimsUnappliedChanges,
+  completeCommand,
+  commandList,
+  modeOptions,
+  promoteModel,
+  shouldConfirmAuto,
+} from '../src/repl.js';
 
 test('createEchoSuppressor drops an exact first-line echo of the user input', () => {
   let out = '';
@@ -88,7 +100,7 @@ test('completeCommand completes a unique prefix', () => {
 
 test('completeCommand lists all commands for bare slash', () => {
   const [hits] = completeCommand('/');
-  assert.deepEqual(hits, ['/model', '/clear', '/help', '/exit']);
+  assert.deepEqual(hits, ['/model', '/permission', '/clear', '/help', '/exit']);
 });
 
 test('completeCommand returns no hits for non-command input', () => {
@@ -98,7 +110,7 @@ test('completeCommand returns no hits for non-command input', () => {
 
 test('commandList includes every command with a description', () => {
   const text = commandList();
-  for (const c of ['/model', '/clear', '/help', '/exit']) assert.match(text, new RegExp(c.replace('/', '\\/')));
+  for (const c of ['/model', '/permission', '/clear', '/help', '/exit']) assert.match(text, new RegExp(c.replace('/', '\\/')));
 });
 
 test('promoteModel puts the fallback first and drops the failed model', () => {
@@ -107,5 +119,62 @@ test('promoteModel puts the fallback first and drops the failed model', () => {
 
 test('promoteModel keeps unrelated models in order', () => {
   assert.deepEqual(promoteModel(['a', 'b', 'c', 'd'], 'b', 'c'), ['c', 'a', 'd']);
+});
+
+test('buildInputPrompt is plain and does not show the active mode', () => {
+  const prompt = buildInputPrompt('C:\\projects\\demo');
+  assert.match(prompt, /C:\\projects\\demo/);
+  assert.doesNotMatch(prompt, /\[Permission\]|\[Auto\]|\[Plan\]/);
+});
+
+test('modeOptions lists every mode with behavior descriptions', () => {
+  assert.deepEqual(modeOptions().map((o) => o.value), ['permission', 'auto', 'plan', null]);
+  const labels = modeOptions().map((o) => o.label).join('\n');
+  assert.match(labels, /Default.*approval/i);
+  assert.doesNotMatch(labels, /Permission/);
+  assert.match(labels, /Auto.*without approval/i);
+  assert.match(labels, /Plan.*read-only/i);
+});
+
+test('applyModeSelection updates system message and preserves input', () => {
+  const messages = [
+    { role: 'system', content: 'old' },
+    { role: 'user', content: 'earlier' },
+  ];
+  const result = applyModeSelection({
+    selectedMode: 'auto',
+    messages,
+    cwd: 'C:\\project',
+    input: 'partially typed',
+  });
+
+  assert.equal(result.mode, 'auto');
+  assert.equal(result.input, 'partially typed');
+  assert.match(result.messages[0].content, /Active mode: Auto/);
+  assert.deepEqual(result.messages.slice(1), messages.slice(1));
+  assert.equal(messages[0].content, 'old');
+});
+
+test('applyModeSelection leaves state unchanged when picker is cancelled', () => {
+  const messages = [{ role: 'system', content: 'old' }];
+  const result = applyModeSelection({ selectedMode: null, mode: 'plan', messages, cwd: 'C:\\project', input: 'draft' });
+  assert.equal(result.mode, 'plan');
+  assert.equal(result.input, 'draft');
+  assert.equal(result.messages, messages);
+});
+
+test('Auto confirmation is required only before first session approval', () => {
+  assert.equal(shouldConfirmAuto('auto', false), true);
+  assert.equal(shouldConfirmAuto('auto', true), false);
+  assert.equal(shouldConfirmAuto('permission', false), false);
+  assert.equal(shouldConfirmAuto('plan', false), false);
+});
+
+test('Auto confirmation clearly warns and defaults to cancel', () => {
+  assert.match(AUTO_WARNING, /all file changes and shell commands/i);
+  assert.match(AUTO_WARNING, /without approval/i);
+  assert.equal(autoConfirmationOptions()[0].value, 'cancel');
+  assert.equal(autoConfirmationOptions()[0].isEscape, true);
+  assert.equal(autoConfirmationOptions()[1].value, 'enable');
 });
 
