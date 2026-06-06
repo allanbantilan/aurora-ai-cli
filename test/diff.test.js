@@ -43,15 +43,15 @@ test('diffLines: pure delete to empty text', () => {
   assert.deepEqual(d.hunks[0].map((op) => op.type), ['del', 'del']);
 });
 
-test('diffLines: distant changes split into separate hunks with 3 context lines', () => {
+test('diffLines: distant changes split into separate hunks with 2 context lines', () => {
   const oldText = ['x0', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'x1'].join('\n');
   const newText = ['X0', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'X1'].join('\n');
   const d = diffLines(oldText, newText);
   assert.equal(d.hunks.length, 2);
-  // first hunk: change at line 1 + 3 lines of trailing context
-  assert.deepEqual(d.hunks[0].map((op) => op.type), ['del', 'add', 'ctx', 'ctx', 'ctx']);
-  // second hunk: 3 leading context lines + change at the last line
-  assert.deepEqual(d.hunks[1].map((op) => op.type), ['ctx', 'ctx', 'ctx', 'del', 'add']);
+  // first hunk: change at line 1 + 2 lines of trailing context
+  assert.deepEqual(d.hunks[0].map((op) => op.type), ['del', 'add', 'ctx', 'ctx']);
+  // second hunk: 2 leading context lines + change at the last line
+  assert.deepEqual(d.hunks[1].map((op) => op.type), ['ctx', 'ctx', 'del', 'add']);
 });
 
 test('diffLines: nearby changes merge into one hunk', () => {
@@ -75,24 +75,33 @@ test('diffLines: counts are accurate for mixed change', () => {
 
 const ESC = String.fromCharCode(27);
 
-test('formatDiff: edited file shows header and closing counts', () => {
+test('formatDiff: header is a single line with counts, followed by a blank line', () => {
   const out = formatDiff('src/a.js', 'one\ntwo\nthree\n', 'one\nTWO\nthree\n', { colors: false });
-  assert.match(out, /^Edited src\/a\.js \(\+1 -1\)/);
-  assert.match(out, /\(\+1 -1\)\s*$/);
+  const lines = out.split('\n');
+  assert.equal(lines[0], 'Edited src/a.js (+1 -1)');
+  assert.equal(lines[1], '');
+  assert.doesNotMatch(lines.at(-1), /\(\+1 -1\)/); // no trailing counts line
 });
 
-test('formatDiff: removed and added lines carry - and + markers with line numbers', () => {
+test('formatDiff: colored header paints filename white, +N green and -N red', () => {
+  const out = formatDiff('src/a.js', 'one\ntwo\n', 'one\nTWO\n', { colors: true });
+  const header = out.split('\n')[0];
+  assert.match(header, new RegExp(`^Edited ${ESC}\\[37msrc/a\\.js${ESC}\\[39m`));
+  assert.match(header, new RegExp(`\\(${ESC}\\[38;2;86;211;100m\\+1${ESC}\\[39m ${ESC}\\[38;2;248;81;73m-1${ESC}\\[39m\\)$`));
+});
+
+test('formatDiff: rows use a fixed 4-char gutter with - and + markers', () => {
   const out = formatDiff('a.js', 'one\ntwo\nthree\n', 'one\nTWO\nthree\n', { colors: false });
-  assert.match(out, /2 - two/);
-  assert.match(out, /2 \+ TWO/);
-  assert.match(out, /1 {3}one/); // context line: number, no marker
+  assert.match(out, /^ {3}2 - two$/m);
+  assert.match(out, /^ {3}2 \+ TWO$/m);
+  assert.match(out, /^ {3}1 {3}one$/m); // context line: number, no marker, no styling
 });
 
-test('formatDiff: multiple hunks are separated by an ellipsis', () => {
+test('formatDiff: multiple hunks are separated by a spaced ellipsis with blank lines around it', () => {
   const oldText = ['x0', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'x1'].join('\n');
   const newText = ['X0', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'X1'].join('\n');
   const out = formatDiff('a.js', oldText, newText, { colors: false });
-  assert.match(out, /·····/);
+  assert.match(out, /\n\n· · · · ·\n\n/);
 });
 
 test('formatDiff: created file is all adds, truncated at 15 lines', () => {
@@ -101,12 +110,12 @@ test('formatDiff: created file is all adds, truncated at 15 lines', () => {
   assert.match(out, /^Created new\.js \(\+20 -0\)/);
   assert.match(out, /15 \+ line15/);
   assert.doesNotMatch(out, /line16/);
-  assert.match(out, /·····/);
+  assert.match(out, /· · · · ·/);
 });
 
 test('formatDiff: short created file has no ellipsis', () => {
   const out = formatDiff('new.js', '', 'a\nb\n', { colors: false });
-  assert.doesNotMatch(out, /·····/);
+  assert.doesNotMatch(out, /· · · · ·/);
 });
 
 test('formatDiff: emptied file renders as deleted, all removes', () => {

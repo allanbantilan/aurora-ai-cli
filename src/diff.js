@@ -3,7 +3,7 @@
  * diff; formatDiff renders it as a git-style red/green block.
  */
 
-const CONTEXT = 3; // context lines per side, like `git diff -U3`
+const CONTEXT = 2; // context lines per side around each change chunk
 const MAX_LCS_CELLS = 4_000_000; // beyond this the O(n*m) table is too big
 
 /** Split into lines, normalizing CRLF and dropping the trailing empty line a final \n produces. */
@@ -107,7 +107,7 @@ const identity = (s) => s;
 
 function styles(colors) {
   if (!colors) {
-    return { redBg: identity, greenBg: identity, redFg: identity, greenFg: identity, dim: identity };
+    return { redBg: identity, greenBg: identity, redFg: identity, greenFg: identity, dim: identity, white: identity };
   }
   return {
     // muted truecolor row tints (Codex-style) — the bright 41/42 palette is unreadable
@@ -116,8 +116,11 @@ function styles(colors) {
     redFg: wrapAnsi('38;2;248;81;73', 39),
     greenFg: wrapAnsi('38;2;86;211;100', 39),
     dim: wrapAnsi(2, 22),
+    white: wrapAnsi(37, 39),
   };
 }
+
+const SEPARATOR = '· · · · ·'; // dimmed gap marker between change chunks
 
 /** One rendered diff row: padded line number, marker, text — the whole row is tinted per op type. */
 function renderOp(op, width, st) {
@@ -128,16 +131,17 @@ function renderOp(op, width, st) {
   return st.dim(`${num}   ${text}`);
 }
 
+/** Line numbers sit in a fixed 4-char right-aligned column (wider only past line 9999). */
 function numberWidth(ops) {
   let max = 1;
   for (const op of ops) max = Math.max(max, op.oldNum ?? 0, op.newNum ?? 0);
-  return String(max).length;
+  return Math.max(4, String(max).length);
 }
 
 /**
- * Git-style diff block: "Edited path (+N -M)" header, red/green body rows,
- * dim ····· between hunks, closing counts. Created files (empty/absent old
- * content) and deleted files (emptied content) preview the first
+ * Git-style diff block: "Edited path (+N -M)" header (white filename, green
+ * +N, red -N), tinted change rows with dim 2-line context, "· · · · ·"
+ * between chunks. Created/deleted files preview the first
  * CREATED_PREVIEW_LINES lines; edited diffs are capped at MAX_RENDERED_LINES.
  */
 export function formatDiff(filePath, oldText, newText, { colors = true } = {}) {
@@ -146,15 +150,14 @@ export function formatDiff(filePath, oldText, newText, { colors = true } = {}) {
   const newEmpty = newText == null || newText === '';
   const { ops, hunks, added, removed } = diffLines(oldText ?? '', newText ?? '');
   const verb = oldEmpty && !newEmpty ? 'Created' : !oldEmpty && newEmpty ? 'Deleted' : 'Edited';
-  const counts = `(+${added} -${removed})`;
-  const header = `${verb} ${filePath} ${counts}`;
+  const header = `${verb} ${st.white(filePath)} (${st.greenFg(`+${added}`)} ${st.redFg(`-${removed}`)})`;
   if (!hunks.length) return header;
 
   const width = numberWidth(ops);
   const rows = [];
   if (verb === 'Created' || verb === 'Deleted') {
     for (const op of ops.slice(0, CREATED_PREVIEW_LINES)) rows.push(renderOp(op, width, st));
-    if (ops.length > CREATED_PREVIEW_LINES) rows.push(st.dim('·····'));
+    if (ops.length > CREATED_PREVIEW_LINES) rows.push('', st.dim(SEPARATOR));
   } else {
     let rendered = 0;
     let truncated = 0;
@@ -167,9 +170,9 @@ export function formatDiff(filePath, oldText, newText, { colors = true } = {}) {
         rows.push(renderOp(op, width, st));
         rendered += 1;
       }
-      if (h < hunks.length - 1 && rendered < MAX_RENDERED_LINES) rows.push(st.dim('·····'));
+      if (h < hunks.length - 1 && rendered < MAX_RENDERED_LINES) rows.push('', st.dim(SEPARATOR), '');
     });
     if (truncated) rows.push(st.dim(`… ${truncated} more lines`));
   }
-  return [header, ...rows, counts].join('\n');
+  return [header, '', ...rows].join('\n');
 }

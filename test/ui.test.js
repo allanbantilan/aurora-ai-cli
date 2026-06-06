@@ -545,7 +545,7 @@ test('formatToolPreview write_file over an existing file shows an Edited diff', 
   fs.writeFileSync(file, 'one\ntwo\n');
   const out = formatToolPreview('write_file', { path: file, content: 'one\nTWO\n' }, { colors: true });
   assert.match(out, /\[write_file\]/);
-  assert.match(out, /Edited .*a\.txt \(\+1 -1\)/);
+  assert.match(out, /Edited .*a\.txt.*\(.*\+1.* .*-1.*\)/); // header counts are individually colored
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
@@ -553,7 +553,7 @@ test('formatToolPreview write_file for a new path shows a Created diff', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'aurora-prev-'));
   const file = path.join(dir, 'new.txt');
   const out = formatToolPreview('write_file', { path: file, content: 'hello\n' }, { colors: true });
-  assert.match(out, /Created .*new\.txt \(\+1 -0\)/);
+  assert.match(out, /Created .*new\.txt.*\(.*\+1.* .*-0.*\)/);
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
@@ -567,7 +567,7 @@ test('formatToolPreview edit_file shows a diff of the applied replacement', () =
     { colors: true }
   );
   assert.match(out, /\[edit_file\]/);
-  assert.match(out, /Edited .*b\.txt \(\+1 -1\)/);
+  assert.match(out, /Edited .*b\.txt.*\(.*\+1.* .*-1.*\)/);
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
