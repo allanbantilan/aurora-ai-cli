@@ -618,10 +618,13 @@ export function renderDoneSummary(
   const byPath = new Map();
   for (const f of files ?? []) {
     const prev = byPath.get(f.path);
-    byPath.set(f.path, prev === '+' ? '+' : f.change);
+    byPath.set(f.path, {
+      change: prev?.change === '+' ? '+' : f.change,
+      note: f.note || prev?.note || '',
+    });
   }
   const list = [...byPath.entries()];
-  const created = list.filter(([, ch]) => ch === '+').length;
+  const created = list.filter(([, f]) => f.change === '+').length;
   const edited = list.length - created;
   const parts = [];
   if (created) parts.push(`${created} file${created === 1 ? '' : 's'} created`);
@@ -636,7 +639,11 @@ export function renderDoneSummary(
     `${c.dim(v)}  ${summary}`,
     c.dim(`${bl}${h.repeat(Math.max(0, inner))}${br}`),
   ];
-  for (const [p, ch] of list) out.push(`   ${(ch === '+' ? c.green : c.yellow)(ch)}  ${c.cyan(p)}`);
+  const pathWidth = Math.max(0, ...list.map(([p]) => p.length));
+  for (const [p, f] of list) {
+    const note = f.note ? `  ${c.dim(f.note)}` : '';
+    out.push(`   ${(f.change === '+' ? c.green : c.yellow)(f.change)}  ${c.cyan(p.padEnd(pathWidth))}${note}`);
+  }
   out.push('', `${c.cyan('❯')} What should Aurora do next?`);
   return out.join('\n');
 }

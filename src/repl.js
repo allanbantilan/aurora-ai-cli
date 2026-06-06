@@ -162,6 +162,37 @@ export function parsePlanResponse(response) {
   return { text, status: 'complete', questions: [], ...EMPTY_PLAN_SECTIONS };
 }
 
+export const PHANTOM_RETRY_PROMPT = 'Apply those changes now using your file tools.';
+
+/**
+ * Line filter for streamed model text: "✓ <file>: <note>" summary lines are
+ * harvested via onNote(file, note) and dropped from the display — they are
+ * rendered inside the AURORA DONE box instead. Everything else passes to
+ * write() unchanged (line-buffered).
+ */
+export function createTickFilter(write, onNote) {
+  const TICK_RE = /^\s*[✓√]\s+(\S+?):\s+(.+)$/;
+  let buffer = '';
+  const handle = (line, newline) => {
+    const m = line.match(TICK_RE);
+    if (m) onNote(m[1], m[2].trim());
+    else write(newline ? `${line}\n` : line);
+  };
+  const push = (chunk) => {
+    buffer += chunk;
+    let nl;
+    while ((nl = buffer.indexOf('\n')) !== -1) {
+      handle(buffer.slice(0, nl), true);
+      buffer = buffer.slice(nl + 1);
+    }
+  };
+  push.flush = () => {
+    if (buffer) handle(buffer, false);
+    buffer = '';
+  };
+  return push;
+}
+
 /** Plain-language spinner label for a running tool — raw JSON is never shown to the user. */
 export function toolActivityLabel(name, args = {}) {
   const base = (p) => (typeof p === 'string' ? p.split(/[\\/]/).pop() : '');
@@ -483,14 +514,18 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
     let planningSession = previousModeAfterTurn !== null;
     let planShownThisSession = false;
     const turnFileOps = [];
+    const turnFileNotes = new Map();
     let turnErrors = 0;
+    let phantomRetried = false;
     try {
       while (input) {
         messages.push({ role: 'user', content: input });
         const highlighter = new CodeHighlighter();
-        const writeModelText = createEchoSuppressor(input, (t) => {
-          process.stdout.write(highlighter.highlight(t));
-        });
+        const tickFilter = createTickFilter(
+          (t) => process.stdout.write(highlighter.highlight(t)),
+          (file, note) => turnFileNotes.set(file, note)
+        );
+        const writeModelText = createEchoSuppressor(input, tickFilter);
         let reasoningStarted = 0;
         let assistantText = '';
         let aiPrefixPrinted = false;
@@ -526,20 +561,24 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
             }
             reasoningStarted = 0;
             // never dump raw [tool] JSON — show a plain-language activity line instead
-            spinner.start(planningSession ? () => planActivityText(planActivityStarted) : toolActivityLabel(name, args));
+            spinner.start(toolActivityLabel(name, args));
           },
           onToolEnd: (name, args, result) => {
-            if (!DIFF_TOOLS.has(name) || typeof args.path !== 'string') return;
-            if (typeof result !== 'string' || result.startsWith('User denied')) return;
+            const resume = () =>
+              spinner.start(planningSession ? () => planActivityText(planActivityStarted) : 'thinking...');
+            if (!DIFF_TOOLS.has(name) || typeof args.path !== 'string' || typeof result !== 'string') {
+              return resume(); // tool finished: clear its activity line
+            }
+            if (result.startsWith('User denied')) return resume();
             if (result.startsWith('Error')) {
               turnErrors += 1;
-              return;
+              return resume();
             }
             turnFileOps.push({ path: args.path, change: editSnapshot === null ? '+' : '~' });
             const after = readFileOrNull(args.path);
             spinner.stop();
             console.log(`\n${formatDiff(args.path, editSnapshot ?? '', after ?? '', { colors: colorEnabled })}`);
-            spinner.start(planningSession ? () => planActivityText(planActivityStarted) : 'thinking...');
+            resume();
           },
           onRetry: (attempt, retries, delayMs) =>
             spinner.update(`rate-limited, retrying in ${delayMs / 1000}s (${attempt}/${retries})...`),
@@ -555,13 +594,27 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
 
         if (!planningSession) {
           writeModelText.flush();
+          tickFilter.flush();
           process.stdout.write(highlighter.flush());
           console.log();
           if (claimsUnappliedChanges(assistantText, toolsExecuted)) {
+            if (!phantomRetried) {
+              // silent auto-retry: tell the model to actually apply what it described
+              phantomRetried = true;
+              input = PHANTOM_RETRY_PROMPT;
+              continue;
+            }
             console.log(yellow('⚠ the model described changes but did not modify any files — ask it to apply them using its tools'));
           }
           if (turnFileOps.length || turnErrors) {
-            console.log(`\n${renderDoneSummary(turnFileOps, { errors: turnErrors })}`);
+            const noteFor = (p) => {
+              if (turnFileNotes.has(p)) return turnFileNotes.get(p);
+              const base = p.split(/[\\/]/).pop();
+              for (const [k, v] of turnFileNotes) if (k.split(/[\\/]/).pop() === base) return v;
+              return '';
+            };
+            const files = turnFileOps.map((op) => ({ ...op, note: noteFor(op.path) }));
+            console.log(`\n${renderDoneSummary(files, { errors: turnErrors })}`);
           }
           break;
         }

@@ -632,3 +632,15 @@ test('renderDoneSummary reports errors and never throws on empty input', () => {
   assert.match(out, /2 errors/);
   assert.doesNotMatch(out, /files created/);
 });
+
+test('renderDoneSummary shows aligned one-line notes for each file', () => {
+  const out = renderDoneSummary(
+    [
+      { path: 'index.html', change: '~', note: 'product links, cart link fixed' },
+      { path: 'product.html', change: '~', note: 'Tailwind design, styled detail layout' },
+    ],
+    { colors: false, ascii: false, columns: 100 }
+  );
+  assert.match(out, /~ {2}index\.html {3}.*product links, cart link fixed/);
+  assert.match(out, /~ {2}product\.html {1}.*Tailwind design/);
+});

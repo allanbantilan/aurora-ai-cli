@@ -17,6 +17,8 @@ import {
   hasStructuredPlan,
   toolActivityLabel,
   permissionSummary,
+  createTickFilter,
+  PHANTOM_RETRY_PROMPT,
   planActivityText,
   planChoiceOptions,
   planCompletionOptions,
@@ -404,4 +406,39 @@ test('toolActivityLabel never includes raw JSON braces', () => {
 test('permissionSummary shows the tool and its target', () => {
   assert.equal(permissionSummary('write_file', { path: 'products.json' }), 'write_file → products.json');
   assert.equal(permissionSummary('run_command', { command: 'npm i' }), 'run_command → npm i');
+});
+
+test('createTickFilter harvests per-file summary lines and hides them from display', () => {
+  let shown = '';
+  const notes = [];
+  const f = createTickFilter((t) => (shown += t), (file, note) => notes.push([file, note]));
+  f('Working on it.\n');
+  f('✓ index.html: updated product links and cart\n');
+  f('All done');
+  f.flush();
+  assert.equal(shown, 'Working on it.\nAll done');
+  assert.deepEqual(notes, [['index.html', 'updated product links and cart']]);
+});
+
+test('createTickFilter handles tick lines split across stream chunks', () => {
+  let shown = '';
+  const notes = [];
+  const f = createTickFilter((t) => (shown += t), (file, note) => notes.push([file, note]));
+  f('✓ prod');
+  f('uct.html: Tailwind design\n');
+  f.flush();
+  assert.equal(shown, '');
+  assert.deepEqual(notes, [['product.html', 'Tailwind design']]);
+});
+
+test('createTickFilter harvests a trailing tick line without newline on flush', () => {
+  const notes = [];
+  const f = createTickFilter(() => {}, (file, note) => notes.push(file));
+  f('✓ cart.html: cart UI');
+  f.flush();
+  assert.deepEqual(notes, ['cart.html']);
+});
+
+test('PHANTOM_RETRY_PROMPT tells the model to apply changes with tools', () => {
+  assert.match(PHANTOM_RETRY_PROMPT, /apply.*changes.*file tools/i);
 });
