@@ -18,6 +18,7 @@ import {
   modelCategory,
   formatToolPreview,
   formatCtx,
+  renderPlan,
 } from '../src/ui.js';
 
 test('promptLabel shows the cwd folder name', () => {
@@ -436,4 +437,82 @@ test('formatCtx buckets percentages into dim/yellow/red levels', () => {
 test('formatCtx clamps out-of-range values', () => {
   assert.deepEqual(formatCtx(140), { text: 'ctx: 100% used', level: 'red' });
   assert.deepEqual(formatCtx(-5), { text: 'ctx: 0% used', level: 'dim' });
+});
+
+const PLAN_FIXTURE = {
+  status: 'complete',
+  title: 'make landing page modern',
+  context: ['index.html  (main landing page)', 'about.html  (secondary page)'],
+  questions: [],
+  plan: ['Set up Tailwind CDN in index.html', 'Redesign hero section'],
+  files: [
+    { path: 'index.html', change: '~', note: 'major redesign' },
+    { path: 'styles.css', change: '+', note: 'custom overrides' },
+  ],
+  risks: ['No backend — cart is placeholder only'],
+};
+
+test('renderPlan shows boxed title and all populated sections', () => {
+  const out = renderPlan(PLAN_FIXTURE, { colors: false, ascii: false, columns: 80 });
+  assert.match(out, /AURORA PLAN/);
+  assert.match(out, /make landing page modern/);
+  assert.match(out, /📁 Context/);
+  assert.match(out, /📋 Plan/);
+  assert.match(out, /📄 Files/);
+  assert.match(out, /⚠ {2}Risks/);
+  assert.doesNotMatch(out, /❓/); // no questions in fixture
+});
+
+test('renderPlan uses tree characters for context and numbers plan steps', () => {
+  const out = renderPlan(PLAN_FIXTURE, { colors: false, ascii: false, columns: 80 });
+  assert.match(out, /├─ index\.html/);
+  assert.match(out, /└─ about\.html/);
+  assert.match(out, /1\. Set up Tailwind CDN/);
+  assert.match(out, /2\. Redesign hero/);
+});
+
+test('renderPlan labels files with their change marker and note', () => {
+  const out = renderPlan(PLAN_FIXTURE, { colors: false, ascii: false, columns: 80 });
+  assert.match(out, /~ {2}index\.html\s+major redesign/);
+  assert.match(out, /\+ {2}styles\.css\s+custom overrides/);
+});
+
+test('renderPlan renders questions with inline recommended tag', () => {
+  const plan = {
+    ...PLAN_FIXTURE,
+    status: 'needs_input',
+    questions: [{ prompt: 'Tech stack?', choices: ['plain HTML/CSS', 'React'] }],
+  };
+  const out = renderPlan(plan, { colors: false, ascii: false, columns: 80 });
+  assert.match(out, /❓ Questions/);
+  assert.match(out, /1\. Tech stack\? {2}\[recommended: plain HTML\/CSS\] {2}alt: React/);
+});
+
+test('renderPlan skips empty sections entirely', () => {
+  const out = renderPlan(
+    { status: 'complete', title: 't', context: [], questions: [], plan: ['x'], files: [], risks: [] },
+    { colors: false, ascii: false, columns: 80 }
+  );
+  assert.doesNotMatch(out, /Context|Files|Risks|Questions/);
+  assert.match(out, /📋 Plan/);
+});
+
+test('renderPlan falls back to ASCII icons and box chars under legacy conhost', () => {
+  const out = renderPlan(PLAN_FIXTURE, { colors: false, ascii: true, columns: 80 });
+  assert.doesNotMatch(out, /[📁📋📄╭─├└❓]|⚠/u);
+  assert.match(out, /\[ctx\] Context/);
+  assert.match(out, /\[plan\] Plan/);
+  assert.match(out, /\[files\] Files/);
+  assert.match(out, /\[!\] {2}Risks/);
+});
+
+test('renderPlan emits no ANSI codes when colors are off', () => {
+  const out = renderPlan(PLAN_FIXTURE, { colors: false, ascii: false, columns: 80 });
+  assert.equal(out.includes(String.fromCharCode(27)), false);
+});
+
+test('renderPlan truncates overlong lines to the terminal width', () => {
+  const plan = { ...PLAN_FIXTURE, plan: ['x'.repeat(300)] };
+  const out = renderPlan(plan, { colors: false, ascii: false, columns: 40 });
+  for (const line of out.split('\n')) assert.equal(line.length <= 40, true);
 });

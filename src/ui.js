@@ -509,3 +509,66 @@ export function multiSelectMenu(rl, title, options, preChecked = []) {
     render(false);
   });
 }
+
+const PLAN_ICONS = { context: '📁', questions: '❓', plan: '📋', files: '📄', risks: '⚠ ' };
+const PLAN_ICONS_ASCII = { context: '[ctx]', questions: '[?]', plan: '[plan]', files: '[files]', risks: '[!] ' };
+
+/**
+ * Rich plan renderer: boxed AURORA PLAN title, icon sections with tree lines.
+ * Pure string builder — takes the parsed-plan object from parsePlanResponse.
+ * ascii swaps emoji/box-drawing for conhost-safe characters; colors=false
+ * yields plain text (NO_COLOR / non-TTY).
+ */
+export function renderPlan(
+  plan,
+  { colors = colorEnabled, ascii = legacyConhost, columns = process.stdout.columns || 80 } = {}
+) {
+  const c = colors
+    ? { cyan: forceCyan, dim: forceDim, green: forceGreen, yellow: forceYellow, red: (s) => `${ESC}[31m${s}${ESC}[39m` }
+    : { cyan: (s) => s, dim: (s) => s, green: (s) => s, yellow: (s) => s, red: (s) => s };
+  const icons = ascii ? PLAN_ICONS_ASCII : PLAN_ICONS;
+  const [h, v, tl, tr, bl, br] = ascii ? ['-', '|', '+', '+', '+', '+'] : ['─', '│', '╭', '╮', '╰', '╯'];
+  const [tee, ell] = ascii ? ['|-', '`-'] : ['├─', '└─'];
+  const bullet = ascii ? '*' : '·';
+  const clip = (s) => (s.length > columns ? `${s.slice(0, columns - 1)}…` : s);
+  const out = [];
+
+  // title box
+  const label = ' AURORA PLAN ';
+  const inner = Math.min(columns - 2, Math.max((plan.title?.length ?? 0) + 4, 44));
+  out.push(c.dim(`${tl}${h}${label}${h.repeat(Math.max(0, inner - label.length - 1))}${tr}`));
+  if (plan.title) out.push(clip(`${c.dim(v)}  ${plan.title}`));
+  out.push(c.dim(`${bl}${h.repeat(inner)}${br}`));
+
+  const section = (icon, name, lines) => {
+    if (!lines.length) return;
+    out.push('', `${icon} ${name}`);
+    out.push(...lines.map(clip));
+  };
+
+  section(
+    icons.context,
+    'Context',
+    (plan.context ?? []).map((line, i, all) => `   ${c.dim(i === all.length - 1 ? ell : tee)} ${line}`)
+  );
+  section(
+    icons.questions,
+    'Questions',
+    (plan.questions ?? []).map(({ prompt, choices }, i) => {
+      const alts = choices.slice(1).join(' / ');
+      return `   ${i + 1}. ${prompt}  ${c.cyan(`[recommended: ${choices[0]}]`)}${alts ? `  ${c.dim(`alt: ${alts}`)}` : ''}`;
+    })
+  );
+  section(icons.plan, 'Plan', (plan.plan ?? []).map((step, i) => `   ${i + 1}. ${step}`));
+  const changeColor = { '+': c.green, '~': c.yellow, '-': c.red };
+  const pathWidth = Math.max(0, ...(plan.files ?? []).map((f) => f.path.length));
+  section(
+    icons.files,
+    'Files',
+    (plan.files ?? []).map((f) => `   ${changeColor[f.change](f.change)}  ${c.cyan(f.path.padEnd(pathWidth))}  ${f.note}`)
+  );
+  section(icons.risks, 'Risks', (plan.risks ?? []).map((r) => `   ${c.dim(bullet)} ${r}`));
+
+  out.push('', c.dim(h.repeat(Math.min(columns, 52))));
+  return out.join('\n');
+}
