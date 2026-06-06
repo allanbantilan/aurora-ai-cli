@@ -478,15 +478,22 @@ test('renderPlan labels files with their change marker and note', () => {
   assert.match(out, /\+ {2}styles\.css\s+custom overrides/);
 });
 
-test('renderPlan renders questions with inline recommended tag', () => {
+test('renderPlan never renders questions — the REPL asks them interactively', () => {
   const plan = {
     ...PLAN_FIXTURE,
     status: 'needs_input',
     questions: [{ prompt: 'Tech stack?', choices: ['plain HTML/CSS', 'React'] }],
   };
   const out = renderPlan(plan, { colors: false, ascii: false, columns: 80 });
-  assert.match(out, /❓ Questions/);
-  assert.match(out, /1\. Tech stack\? {2}\[recommended: plain HTML\/CSS\] {2}alt: React/);
+  assert.doesNotMatch(out, /❓|Questions|Tech stack/);
+});
+
+test('renderPlan update mode shows refresh line with Plan and Files only', () => {
+  const out = renderPlan(PLAN_FIXTURE, { colors: false, ascii: false, columns: 80, update: true });
+  assert.match(out, /^↻ Plan updated ─ 2 steps/);
+  assert.match(out, /📋 Plan/);
+  assert.match(out, /📄 Files/);
+  assert.doesNotMatch(out, /AURORA PLAN|Context|Risks|❓/);
 });
 
 test('renderPlan skips empty sections entirely', () => {

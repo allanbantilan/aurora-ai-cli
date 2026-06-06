@@ -529,18 +529,20 @@ export function multiSelectMenu(rl, title, options, preChecked = []) {
   });
 }
 
-const PLAN_ICONS = { context: '📁', questions: '❓', plan: '📋', files: '📄', risks: '⚠ ' };
-const PLAN_ICONS_ASCII = { context: '[ctx]', questions: '[?]', plan: '[plan]', files: '[files]', risks: '[!] ' };
+const PLAN_ICONS = { context: '📁', plan: '📋', files: '📄', risks: '⚠ ' };
+const PLAN_ICONS_ASCII = { context: '[ctx]', plan: '[plan]', files: '[files]', risks: '[!] ' };
 
 /**
  * Rich plan renderer: boxed AURORA PLAN title, icon sections with tree lines.
  * Pure string builder — takes the parsed-plan object from parsePlanResponse.
- * ascii swaps emoji/box-drawing for conhost-safe characters; colors=false
- * yields plain text (NO_COLOR / non-TTY).
+ * Questions are never rendered here — the REPL asks them interactively.
+ * update=true renders the refreshed-plan view ("↻ Plan updated" + Plan/Files
+ * only) instead of repeating the full box. ascii swaps emoji/box-drawing for
+ * conhost-safe characters; colors=false yields plain text (NO_COLOR / non-TTY).
  */
 export function renderPlan(
   plan,
-  { colors = colorEnabled, ascii = legacyConhost, columns = process.stdout.columns || 80 } = {}
+  { colors = colorEnabled, ascii = legacyConhost, columns = process.stdout.columns || 80, update = false } = {}
 ) {
   const c = colors
     ? { cyan: forceCyan, dim: forceDim, green: forceGreen, yellow: forceYellow, red: (s) => `${ESC}[31m${s}${ESC}[39m` }
@@ -557,12 +559,17 @@ export function renderPlan(
   };
   const out = [];
 
-  // title box
-  const label = ' AURORA PLAN ';
-  const inner = Math.max(label.length + 1, Math.min(columns - 2, Math.max((plan.title?.length ?? 0) + 4, 44)));
-  out.push(c.dim(`${tl}${h}${label}${h.repeat(Math.max(0, inner - label.length - 1))}${tr}`));
-  if (plan.title) out.push(clip(`${c.dim(v)}  ${plan.title}`));
-  out.push(c.dim(`${bl}${h.repeat(Math.max(0, inner))}${br}`));
+  if (update) {
+    // refreshed plan after answered questions: no header box, no repeated sections
+    out.push(`${ascii ? '~' : '↻'} Plan updated ${c.dim(h)} ${plan.plan?.length ?? 0} steps`);
+  } else {
+    // title box
+    const label = ' AURORA PLAN ';
+    const inner = Math.max(label.length + 1, Math.min(columns - 2, Math.max((plan.title?.length ?? 0) + 4, 44)));
+    out.push(c.dim(`${tl}${h}${label}${h.repeat(Math.max(0, inner - label.length - 1))}${tr}`));
+    if (plan.title) out.push(clip(`${c.dim(v)}  ${plan.title}`));
+    out.push(c.dim(`${bl}${h.repeat(Math.max(0, inner))}${br}`));
+  }
 
   const section = (icon, name, lines) => {
     if (!lines.length) return;
@@ -570,19 +577,13 @@ export function renderPlan(
     out.push(...lines.map(clip));
   };
 
-  section(
-    icons.context,
-    'Context',
-    (plan.context ?? []).map((line, i, all) => `   ${c.dim(i === all.length - 1 ? ell : tee)} ${line}`)
-  );
-  section(
-    icons.questions,
-    'Questions',
-    (plan.questions ?? []).map(({ prompt, choices }, i) => {
-      const alts = choices.slice(1).join(' / ');
-      return `   ${i + 1}. ${prompt}  ${c.cyan(`[recommended: ${choices[0]}]`)}${alts ? `  ${c.dim(`alt: ${alts}`)}` : ''}`;
-    })
-  );
+  if (!update) {
+    section(
+      icons.context,
+      'Context',
+      (plan.context ?? []).map((line, i, all) => `   ${c.dim(i === all.length - 1 ? ell : tee)} ${line}`)
+    );
+  }
   section(icons.plan, 'Plan', (plan.plan ?? []).map((step, i) => `   ${i + 1}. ${step}`));
   const changeColor = { '+': c.green, '~': c.yellow, '-': c.red };
   const pathWidth = Math.max(0, ...(plan.files ?? []).map((f) => f.path.length));
@@ -593,7 +594,7 @@ export function renderPlan(
       (f) => `   ${(changeColor[f.change] ?? c.dim)(f.change)}  ${c.cyan(f.path.padEnd(pathWidth))}  ${f.note ?? ''}`
     )
   );
-  section(icons.risks, 'Risks', (plan.risks ?? []).map((r) => `   ${c.dim(bullet)} ${r}`));
+  if (!update) section(icons.risks, 'Risks', (plan.risks ?? []).map((r) => `   ${c.dim(bullet)} ${r}`));
 
   out.push('', c.dim(h.repeat(Math.min(columns, 52))));
   return out.join('\n');
