@@ -80,6 +80,12 @@ test('systemPrompt carries Claude Code-style plan-mode instructions', () => {
   assert.match(p, /Risks/);
   assert.match(p, /recommended choice first/i);
   assert.match(p, /Do not recommend installing libraries/i);
+  assert.match(p, /"title"/);
+  assert.match(p, /"context"/);
+  assert.match(p, /"plan"/);
+  assert.match(p, /"files"/);
+  assert.match(p, /"risks"/);
+  assert.match(p, /2-4 line summary/);
 });
 
 test('systemPrompt treats invalid modes as permission mode', () => {

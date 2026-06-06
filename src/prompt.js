@@ -10,16 +10,14 @@ Plan-mode rules override the stack defaults and general instruction to avoid opt
 - Inspect package files, config files, routes, and folder structure before planning. State verified facts only.
 - Do not recommend installing libraries unless the project already uses them or the user has approved them.
 - If critical choices remain, stop before the implementation plan and ask questions. Provide 2-3 concise choices per question with the recommended choice first. Do not ask questions whose answers can be discovered from files.
-- When ready, output these sections: "Verified project context", "Questions / Unknowns", "Implementation plan", "Files likely to change", and "Risks".
-- End every response with exactly one hidden protocol block. Use:
+- Keep the visible response to a 2-4 line summary. Output: Verified project context, Questions / Unknowns, Risks. The full plan travels in the hidden protocol block below; the CLI renders it as a rich plan view.
+- Files likely to change are listed in the protocol block.
+- End every response with exactly one hidden protocol block carrying ALL plan data:
 <!-- AURORA_PLAN_PROTOCOL
-{"status":"needs_input","questions":[{"prompt":"Question?","choices":["Recommended choice","Another choice"]}]}
+{"status":"needs_input","title":"short feature title","context":["verified fact (source file)"],"questions":[{"prompt":"Question?","choices":["Recommended choice","Another choice"]}],"plan":["implementation step"],"files":[{"path":"src/file.js","change":"~","note":"what changes"}],"risks":["potential issue"]}
 -->
-when answers are required, or:
-<!-- AURORA_PLAN_PROTOCOL
-{"status":"complete","questions":[]}
--->
-when the plan is complete.`,
+- Field rules: "title" is a short feature label; "context" lists verified facts only; "plan" lists implementation steps in order; "files" lists every file likely to change with "change" set to "+" (new), "~" (modified) or "-" (deleted) and a brief "note"; "risks" lists potential issues. Omit nothing you would have written in prose — the protocol block IS the plan.
+- Use "status":"needs_input" with questions when answers are required. Use "status":"complete" with "questions":[] when the plan is ready.`,
 };
 
 export function systemPrompt(cwd, mode = 'permission') {
