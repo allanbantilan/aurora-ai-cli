@@ -106,10 +106,29 @@ export function completePlanTurn({ choice, previousMode, messages, cwd }) {
   };
 }
 
+const EMPTY_PLAN_SECTIONS = Object.freeze({ title: '', context: [], plan: [], files: [], risks: [] });
+
+/** Validate optional extended protocol fields; anything malformed is dropped, never thrown. */
+function planSections(protocol) {
+  const strings = (v) => (Array.isArray(v) ? v.filter((s) => typeof s === 'string') : []);
+  const files = Array.isArray(protocol.files)
+    ? protocol.files
+        .filter((f) => f && typeof f === 'object' && typeof f.path === 'string' && ['+', '~', '-'].includes(f.change))
+        .map(({ path, change, note }) => ({ path, change, note: typeof note === 'string' ? note : '' }))
+    : [];
+  return {
+    title: typeof protocol.title === 'string' ? protocol.title : '',
+    context: strings(protocol.context),
+    plan: strings(protocol.plan),
+    files,
+    risks: strings(protocol.risks),
+  };
+}
+
 export function parsePlanResponse(response) {
   const match = response.match(PLAN_PROTOCOL_RE);
   const text = (match ? response.slice(0, match.index) : response).trimEnd();
-  if (!match) return { text, status: 'complete', questions: [] };
+  if (!match) return { text, status: 'complete', questions: [], ...EMPTY_PLAN_SECTIONS };
 
   try {
     const protocol = JSON.parse(match[1]);
@@ -125,13 +144,24 @@ export function parsePlanResponse(response) {
           )
           .map(({ prompt, choices }) => ({ prompt, choices }))
       : [];
+    const sections = planSections(protocol);
     if (protocol.status === 'needs_input' && questions.length) {
-      return { text, status: 'needs_input', questions };
+      return { text, status: 'needs_input', questions, ...sections };
+    }
+    if (protocol.status === 'complete') {
+      return { text, status: 'complete', questions: [], ...sections };
     }
   } catch {
     // Malformed protocol is treated as a completed response.
   }
-  return { text, status: 'complete', questions: [] };
+  return { text, status: 'complete', questions: [], ...EMPTY_PLAN_SECTIONS };
+}
+
+/** True when the protocol carried any renderable plan section. */
+export function hasStructuredPlan(plan) {
+  return Boolean(
+    plan.title || plan.context.length || plan.plan.length || plan.files.length || plan.risks.length
+  );
 }
 
 export function planChoiceOptions(choices) {

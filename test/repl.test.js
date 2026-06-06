@@ -14,6 +14,7 @@ import {
   completePlanTurn,
   formatPlanAnswers,
   parsePlanResponse,
+  hasStructuredPlan,
   planActivityText,
   planChoiceOptions,
   planCompletionOptions,
@@ -242,11 +243,15 @@ test('parsePlanResponse hides protocol when the closing marker follows JSON on t
 });
 
 test('parsePlanResponse safely treats missing or malformed protocol as complete', () => {
-  assert.deepEqual(parsePlanResponse('plain plan'), { text: 'plain plan', status: 'complete', questions: [] });
+  const plain = parsePlanResponse('plain plan');
+  assert.equal(plain.text, 'plain plan');
+  assert.equal(plain.status, 'complete');
+  assert.deepEqual(plain.questions, []);
   const malformed = parsePlanResponse('visible\n<!-- AURORA_PLAN_PROTOCOL\nnope\n-->');
   assert.equal(malformed.text, 'visible');
   assert.equal(malformed.status, 'complete');
   assert.deepEqual(malformed.questions, []);
+  assert.deepEqual(malformed.plan, []);
 });
 
 test('planChoiceOptions marks the first choice recommended and adds custom answer', () => {
@@ -311,5 +316,62 @@ test('completePlanTurn restores the previous mode without implementation when de
   assert.equal(result.mode, 'permission');
   assert.match(result.messages[0].content, /Active mode: Default/);
   assert.equal(result.input, '');
+});
+
+test('parsePlanResponse extracts extended plan sections', () => {
+  const response = `Short summary.
+
+<!-- AURORA_PLAN_PROTOCOL
+{"status":"complete","title":"modern landing page","context":["index.html (main page)"],"questions":[],"plan":["Add Tailwind CDN"],"files":[{"path":"index.html","change":"~","note":"redesign"}],"risks":["no backend"]}
+-->`;
+  const result = parsePlanResponse(response);
+  assert.equal(result.status, 'complete');
+  assert.equal(result.title, 'modern landing page');
+  assert.deepEqual(result.context, ['index.html (main page)']);
+  assert.deepEqual(result.plan, ['Add Tailwind CDN']);
+  assert.deepEqual(result.files, [{ path: 'index.html', change: '~', note: 'redesign' }]);
+  assert.deepEqual(result.risks, ['no backend']);
+});
+
+test('parsePlanResponse keeps sections on needs_input responses', () => {
+  const response = `Summary.
+<!-- AURORA_PLAN_PROTOCOL
+{"status":"needs_input","title":"t","questions":[{"prompt":"Q?","choices":["A","B"]}],"plan":["step"]}
+-->`;
+  const result = parsePlanResponse(response);
+  assert.equal(result.status, 'needs_input');
+  assert.equal(result.title, 't');
+  assert.deepEqual(result.plan, ['step']);
+});
+
+test('parsePlanResponse drops malformed file entries and non-string section items', () => {
+  const response = `s
+<!-- AURORA_PLAN_PROTOCOL
+{"status":"complete","questions":[],"context":["ok", 42],"files":[{"path":"a.js","change":"~"},{"path":"b.js","change":"x"},{"change":"+"},"junk"],"risks":"not-an-array"}
+-->`;
+  const result = parsePlanResponse(response);
+  assert.deepEqual(result.context, ['ok']);
+  assert.deepEqual(result.files, [{ path: 'a.js', change: '~', note: '' }]);
+  assert.deepEqual(result.risks, []);
+});
+
+test('parsePlanResponse legacy two-field protocol still parses with empty sections', () => {
+  const response = `text
+<!-- AURORA_PLAN_PROTOCOL
+{"status":"complete","questions":[]}
+-->`;
+  const result = parsePlanResponse(response);
+  assert.equal(result.status, 'complete');
+  assert.equal(result.title, '');
+  assert.deepEqual(result.context, []);
+  assert.deepEqual(result.files, []);
+});
+
+test('hasStructuredPlan detects any populated section', () => {
+  const empty = { title: '', context: [], plan: [], files: [], risks: [] };
+  assert.equal(hasStructuredPlan(empty), false);
+  assert.equal(hasStructuredPlan({ ...empty, title: 't' }), true);
+  assert.equal(hasStructuredPlan({ ...empty, plan: ['step'] }), true);
+  assert.equal(hasStructuredPlan({ ...empty, files: [{ path: 'a', change: '+', note: '' }] }), true);
 });
 
