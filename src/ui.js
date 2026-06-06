@@ -3,6 +3,7 @@ import os from 'node:os';
 import fs from 'node:fs';
 import readline from 'node:readline';
 import { previewTool } from './tools/index.js';
+import { formatDiff } from './diff.js';
 
 export const colorEnabled = Boolean(process.stdout.isTTY) && !process.env.NO_COLOR;
 export const interactiveEnabled = Boolean(process.stdin.isTTY && process.stdout.isTTY);
@@ -192,6 +193,15 @@ function startLineOf(filePath, snippet) {
   }
 }
 
+/** File content or null when unreadable — previews degrade gracefully. */
+function readFileOrNull(filePath) {
+  try {
+    return fs.readFileSync(filePath, 'utf8');
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Styled permission preview: file changes render as bordered, line-numbered
  * code blocks so they stand apart from prose. Falls back to the plain
@@ -211,10 +221,19 @@ export function formatToolPreview(name, args, { colors = colorEnabled } = {}) {
   };
 
   switch (name) {
-    case 'write_file':
-      return `${forceCyan('[write_file]')} ${args.path}\n${block(args.path, args.content)}`;
+    case 'write_file': {
+      const before = readFileOrNull(args.path) ?? '';
+      return `${forceCyan('[write_file]')} ${args.path}\n${formatDiff(args.path, before, String(args.content ?? ''), { colors: true })}`;
+    }
     case 'edit_file': {
-      const line = startLineOf(args.path, args.old_string ?? '');
+      const before = readFileOrNull(args.path);
+      const oldString = args.old_string ?? '';
+      if (before !== null && oldString && before.split(oldString).length - 1 === 1) {
+        const after = before.replace(oldString, () => args.new_string ?? '');
+        return `${forceCyan('[edit_file]')} ${args.path}\n${formatDiff(args.path, before, after, { colors: true })}`;
+      }
+      // fallback: file unreadable or old_string not unique — keep the legacy blocks
+      const line = startLineOf(args.path, oldString);
       return (
         `${forceCyan('[edit_file]')} ${args.path}\n` +
         `${block('remove', args.old_string, line)}\n${block('insert', args.new_string, line)}`

@@ -281,14 +281,12 @@ test('selectMenu erases its block from the screen on close', async () => {
   assert.ok(out.includes(`${esc}[2A${esc}[0J`), 'menu block erased on close');
 });
 
-test('formatToolPreview renders write_file content as a numbered code block', () => {
+test('formatToolPreview renders write_file content as a diff', () => {
   const p = formatToolPreview('write_file', { path: 'a.html', content: '<p>x</p>\n<i>y</i>' }, { colors: true });
   assert.match(p, /\[write_file\][^\n]*a\.html/);
-  assert.match(p, /╭── a\.html/);
-  assert.match(p, /│ 1 /); // line numbers in the gutter
-  assert.match(p, /│ 2 /);
-  assert.match(p, /<p>x<\/p>/);
-  assert.match(p, /╰/);
+  assert.match(p, /Created .*a\.html/); // new file → Created diff
+  assert.match(p, /\+ <p>x<\/p>/);
+  assert.match(p, /\+ <i>y<\/i>/);
 });
 
 test('formatToolPreview renders edit_file as remove/insert blocks', () => {
@@ -301,12 +299,15 @@ test('formatToolPreview renders edit_file as remove/insert blocks', () => {
   assert.match(p, /│ 1 /); // unknown file → numbering falls back to 1
 });
 
-test('edit_file preview numbers lines from the match position in the file', () => {
+test('edit_file preview shows diff when old_string is unique and file is readable', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'aurora-ui-'));
   const f = path.join(dir, 'x.js');
   fs.writeFileSync(f, 'a\nb\nc\nTARGET\nd\n');
   const p = formatToolPreview('edit_file', { path: f, old_string: 'TARGET', new_string: 'X' }, { colors: true });
-  assert.match(p, /│ 4 /); // TARGET sits on line 4
+  assert.match(p, /Edited .*x\.js/); // shows diff for successful replacement
+  assert.match(p, /- TARGET/);
+  assert.match(p, /\+ X/);
+  fs.rmSync(dir, { recursive: true, force: true });
 });
 
 test('formatToolPreview falls back to the plain preview without colors', () => {
@@ -536,4 +537,50 @@ test('renderPlan tolerates unknown change markers and missing notes', () => {
   const out = renderPlan(plan, { colors: false, ascii: false, columns: 80 });
   assert.match(out, /X {2}a\.js/);
   assert.doesNotMatch(out, /undefined/);
+});
+
+test('formatToolPreview write_file over an existing file shows an Edited diff', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'aurora-prev-'));
+  const file = path.join(dir, 'a.txt');
+  fs.writeFileSync(file, 'one\ntwo\n');
+  const out = formatToolPreview('write_file', { path: file, content: 'one\nTWO\n' }, { colors: true });
+  assert.match(out, /\[write_file\]/);
+  assert.match(out, /Edited .*a\.txt \(\+1 -1\)/);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('formatToolPreview write_file for a new path shows a Created diff', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'aurora-prev-'));
+  const file = path.join(dir, 'new.txt');
+  const out = formatToolPreview('write_file', { path: file, content: 'hello\n' }, { colors: true });
+  assert.match(out, /Created .*new\.txt \(\+1 -0\)/);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('formatToolPreview edit_file shows a diff of the applied replacement', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'aurora-prev-'));
+  const file = path.join(dir, 'b.txt');
+  fs.writeFileSync(file, 'alpha\nbeta\ngamma\n');
+  const out = formatToolPreview(
+    'edit_file',
+    { path: file, old_string: 'beta', new_string: 'BETA' },
+    { colors: true }
+  );
+  assert.match(out, /\[edit_file\]/);
+  assert.match(out, /Edited .*b\.txt \(\+1 -1\)/);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('formatToolPreview edit_file falls back to remove/insert blocks when old_string is absent', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'aurora-prev-'));
+  const file = path.join(dir, 'c.txt');
+  fs.writeFileSync(file, 'alpha\n');
+  const out = formatToolPreview(
+    'edit_file',
+    { path: file, old_string: 'missing', new_string: 'x' },
+    { colors: true }
+  );
+  assert.match(out, /remove/);
+  assert.match(out, /insert/);
+  fs.rmSync(dir, { recursive: true, force: true });
 });
