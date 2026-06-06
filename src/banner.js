@@ -57,7 +57,9 @@ function infoPanel({ chain, status, health }) {
   }
   inner.push(`  ${DIM}status   ${R} ${WH}${status}${R}`);
   inner.push('');
-  inner.push(`  ${CY}❄${R}  ${DIM}type a request, or${R} ${WH}/help${R} ${DIM}for commands ·${R} ${WH}/permission${R} ${DIM}change mode ·${R} ${WH}/plan${R} ${DIM}plan feature${R}`);
+  inner.push(`  ${CY}❄${R}  ${DIM}type a request, or${R} ${WH}/help${R} ${DIM}for commands${R}`);
+  inner.push(`     ${WH}/permission${R}  ${DIM}change mode${R}`);
+  inner.push(`     ${WH}/plan${R}        ${DIM}plan feature${R}`);
 
   const pw = Math.max(40, ...inner.map(vlen)) + 2;
   const top = `${DIM}┌${'─'.repeat(pw)}┐${R}`;
