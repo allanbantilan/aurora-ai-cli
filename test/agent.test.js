@@ -158,6 +158,44 @@ test('denial feedback is included in the tool result', async () => {
   assert.match(toolMsg.content, /move it to backup\/ instead/);
 });
 
+test('onToolEnd fires with name, args and result after execution', async () => {
+  const calls = [];
+  const client = fakeClient([
+    toolCallChunks('c1', 'write_file', '{"path":"a.txt","content":"hi"}'),
+    [chunk({ content: 'done' })],
+  ]);
+  await runTurn({
+    client,
+    models: ['m'],
+    messages: [{ role: 'user', content: 'write it' }],
+    tools: fakeTools(async () => 'Wrote a.txt (2 chars)'),
+    permissions: allowAll,
+    onToolEnd: (name, args, result) => calls.push({ name, args, result }),
+  });
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].name, 'write_file');
+  assert.deepEqual(calls[0].args, { path: 'a.txt', content: 'hi' });
+  assert.equal(calls[0].result, 'Wrote a.txt (2 chars)');
+});
+
+test('onToolEnd fires with the denial message when permission is refused', async () => {
+  const calls = [];
+  const client = fakeClient([
+    toolCallChunks('c1', 'write_file', '{"path":"a.txt","content":"hi"}'),
+    [chunk({ content: 'ok' })],
+  ]);
+  await runTurn({
+    client,
+    models: ['m'],
+    messages: [{ role: 'user', content: 'write it' }],
+    tools: fakeTools(async () => 'never called'),
+    permissions: denyAll,
+    onToolEnd: (name, args, result) => calls.push(result),
+  });
+  assert.equal(calls.length, 1);
+  assert.match(calls[0], /^User denied/);
+});
+
 /** client whose create() dispatches on the requested model */
 function modelClient(handlers) {
   return {

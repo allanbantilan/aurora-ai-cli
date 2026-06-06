@@ -11,6 +11,8 @@ const MAX_ITERATIONS = 15;
  * A stream with no delta for stallMs is aborted and treated like an availability error.
  * onUsage(usage) fires after each completion that reports a usage object
  * ({prompt_tokens, ...}) on the final stream chunk; silent otherwise.
+ * onToolEnd(name, args, result) fires after each tool call resolves
+ * (including permission denials and error results).
  */
 export async function runTurn({
   client,
@@ -21,6 +23,7 @@ export async function runTurn({
   onText,
   onReasoning,
   onToolStart,
+  onToolEnd,
   onRetry,
   onModelSwitch,
   onUsage,
@@ -78,6 +81,7 @@ export async function runTurn({
           ? await tools.executeTool(name, args)
           : `User denied this action.${feedback ? ` Instruction: ${feedback}` : ''}`;
       }
+      onToolEnd?.(name, args, result);
       messages.push({ role: 'tool', tool_call_id: call.id, content: result });
     }
   }
