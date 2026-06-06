@@ -244,6 +244,13 @@ test('planChoiceOptions marks the first choice recommended and adds custom answe
   assert.match(options[2].label, /custom answer/i);
 });
 
+test('planChoiceOptions does not duplicate model-provided recommendation markers', () => {
+  const options = planChoiceOptions(['Use npm with build step (recommended)', 'Use plain files (Recommended)']);
+
+  assert.equal(options[0].label, 'Use npm with build step (Recommended)');
+  assert.equal(options[1].label, 'Use plain files');
+});
+
 test('formatPlanAnswers sends all selected answers back together', () => {
   assert.equal(
     formatPlanAnswers([

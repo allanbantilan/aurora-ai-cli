@@ -137,7 +137,9 @@ export function parsePlanResponse(response) {
 export function planChoiceOptions(choices) {
   return [
     ...choices.map((choice, index) => ({
-      label: index === 0 ? `${choice} (Recommended)` : choice,
+      label: index === 0
+        ? `${choice.replace(/\s*\(recommended\)\s*$/i, '')} (Recommended)`
+        : choice.replace(/\s*\(recommended\)\s*$/i, ''),
       value: index,
     })),
     { label: 'Type a custom answer', value: 'custom' },
