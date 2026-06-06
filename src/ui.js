@@ -530,7 +530,12 @@ export function renderPlan(
   const [h, v, tl, tr, bl, br] = ascii ? ['-', '|', '+', '+', '+', '+'] : ['─', '│', '╭', '╮', '╰', '╯'];
   const [tee, ell] = ascii ? ['|-', '`-'] : ['├─', '└─'];
   const bullet = ascii ? '*' : '·';
-  const clip = (s) => (s.length > columns ? `${s.slice(0, columns - 1)}…` : s);
+  const ANSI_RE = /\x1b\[[0-9;]*m/g;
+  // measure VISIBLE width; overlong lines are clipped as plain text so no escape code is ever cut open
+  const clip = (s) => {
+    if (s.replace(ANSI_RE, '').length <= columns) return s;
+    return `${s.replace(ANSI_RE, '').slice(0, columns - 1)}…`;
+  };
   const out = [];
 
   // title box
@@ -565,7 +570,9 @@ export function renderPlan(
   section(
     icons.files,
     'Files',
-    (plan.files ?? []).map((f) => `   ${changeColor[f.change](f.change)}  ${c.cyan(f.path.padEnd(pathWidth))}  ${f.note}`)
+    (plan.files ?? []).map(
+      (f) => `   ${(changeColor[f.change] ?? c.dim)(f.change)}  ${c.cyan(f.path.padEnd(pathWidth))}  ${f.note ?? ''}`
+    )
   );
   section(icons.risks, 'Risks', (plan.risks ?? []).map((r) => `   ${c.dim(bullet)} ${r}`));
 

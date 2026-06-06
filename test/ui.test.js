@@ -516,3 +516,24 @@ test('renderPlan truncates overlong lines to the terminal width', () => {
   const out = renderPlan(plan, { colors: false, ascii: false, columns: 40 });
   for (const line of out.split('\n')) assert.equal(line.length <= 40, true);
 });
+
+test('renderPlan clips styled lines without leaving ANSI codes open', () => {
+  const plan = { ...PLAN_FIXTURE, files: [{ path: 'p/'.repeat(40) + 'x.js', change: '~', note: 'long path' }] };
+  const out = renderPlan(plan, { colors: true, ascii: false, columns: 60 });
+  const esc = String.fromCharCode(27);
+  for (const line of out.split('\n')) {
+    const opens = (line.match(/\x1b\[(36|33|32|31|2)m/g) ?? []).length;
+    const closes = (line.match(/\x1b\[(39|22)m/g) ?? []).length;
+    assert.equal(opens, closes, `unbalanced ANSI in: ${JSON.stringify(line)}`);
+  }
+});
+
+test('renderPlan tolerates unknown change markers and missing notes', () => {
+  const plan = {
+    ...PLAN_FIXTURE,
+    files: [{ path: 'a.js', change: 'X' }, { path: 'b.js', change: '+', note: 'ok' }],
+  };
+  const out = renderPlan(plan, { colors: false, ascii: false, columns: 80 });
+  assert.match(out, /X {2}a\.js/);
+  assert.doesNotMatch(out, /undefined/);
+});
