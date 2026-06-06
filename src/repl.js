@@ -157,10 +157,11 @@ export function parsePlanResponse(response) {
   return { text, status: 'complete', questions: [], ...EMPTY_PLAN_SECTIONS };
 }
 
-/** True when the protocol carried any renderable plan section. */
+/** True when the protocol carried any renderable plan section. Tolerates partial shapes. */
 export function hasStructuredPlan(plan) {
+  if (!plan) return false;
   return Boolean(
-    plan.title || plan.context.length || plan.plan.length || plan.files.length || plan.risks.length
+    plan.title || plan.context?.length || plan.plan?.length || plan.files?.length || plan.risks?.length
   );
 }
 

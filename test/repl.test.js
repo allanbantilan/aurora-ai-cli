@@ -375,3 +375,9 @@ test('hasStructuredPlan detects any populated section', () => {
   assert.equal(hasStructuredPlan({ ...empty, files: [{ path: 'a', change: '+', note: '' }] }), true);
 });
 
+test('hasStructuredPlan tolerates missing or partial shapes', () => {
+  assert.equal(hasStructuredPlan({}), false);
+  assert.equal(hasStructuredPlan(null), false);
+  assert.equal(hasStructuredPlan({ title: 'x' }), true);
+});
+
