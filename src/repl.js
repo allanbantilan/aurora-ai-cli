@@ -16,7 +16,6 @@ import {
   slashMenu,
   multiSelectMenu,
   formatModelStatus,
-  formatToolPreview,
   shortModelName,
   modelCategory,
   interactiveEnabled,
@@ -162,6 +161,33 @@ export function parsePlanResponse(response) {
   return { text, status: 'complete', questions: [], ...EMPTY_PLAN_SECTIONS };
 }
 
+/** Plain-language spinner label for a running tool — raw JSON is never shown to the user. */
+export function toolActivityLabel(name, args = {}) {
+  const base = (p) => (typeof p === 'string' ? p.split(/[\\/]/).pop() : '');
+  switch (name) {
+    case 'list_files':
+      return 'scanning files...';
+    case 'read_file':
+      return `reading ${base(args.path)}...`;
+    case 'grep':
+      return 'searching...';
+    case 'write_file':
+      return `writing ${base(args.path)}...`;
+    case 'edit_file':
+      return `editing ${base(args.path)}...`;
+    case 'run_command':
+      return `running ${String(args.command ?? '').slice(0, 60)}...`;
+    default:
+      return `${name}...`;
+  }
+}
+
+/** One-line "tool → target" summary for the permission prompt. */
+export function permissionSummary(name, args = {}) {
+  const target = name === 'run_command' ? String(args.command ?? '') : String(args.path ?? '');
+  return `${name} → ${target}`;
+}
+
 /** True when the protocol carried any renderable plan section. Tolerates partial shapes. */
 export function hasStructuredPlan(plan) {
   if (!plan) return false;
@@ -287,20 +313,21 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
 
   const permissions = createPermissions(async (toolName, args) => {
     spinner.stop();
-    console.log(`\n${yellow('[permission required]')}\n${formatToolPreview(toolName, args)}\n`);
+    // compact prompt: the diff prints ONCE after the change applies, never here
+    console.log(`\n${magenta('◆')} Permission needed\n  ${cyan(permissionSummary(toolName, args))}\n`);
 
     if (!interactiveEnabled) {
-      const a = (await rl.question('Allow? (y)es once / (a)lways this session / (n)o > '))
+      const a = (await rl.question('Allow once / allow Session / Deny? (a/s/d) > '))
         .trim()
         .toLowerCase();
-      return { choice: a === 'y' ? 'yes' : a === 'a' ? 'always' : 'no' };
+      return { choice: a === 'a' ? 'yes' : a === 's' ? 'always' : 'no' };
     }
 
     const value = await selectMenu(rl, 'Allow?', [
-      { label: 'Yes, once', value: 'yes' },
-      { label: 'Yes, for the rest of the session', value: 'always' },
-      { label: 'No', value: 'no', isEscape: true },
-      { label: 'No — tell the AI what to do instead', value: 'feedback' },
+      { label: 'Allow once', value: 'yes' },
+      { label: 'Allow for this session', value: 'always' },
+      { label: 'Deny', value: 'no', isEscape: true },
+      { label: 'Deny — tell the AI what to do instead', value: 'feedback' },
     ]);
     // the menu erases itself; leave a one-line record of the decision
     if (value === 'feedback') {
@@ -494,9 +521,8 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
               editSnapshot = readFileOrNull(args.path);
             }
             reasoningStarted = 0;
-            spinner.stop();
-            console.log(`\n${magenta(`[tool] ${name}`)} ${dim(JSON.stringify(args).slice(0, 160))}`);
-            spinner.start(planningSession ? () => planActivityText(planActivityStarted) : 'thinking...');
+            // never dump raw [tool] JSON — show a plain-language activity line instead
+            spinner.start(planningSession ? () => planActivityText(planActivityStarted) : toolActivityLabel(name, args));
           },
           onToolEnd: (name, args, result) => {
             if (!DIFF_TOOLS.has(name) || typeof args.path !== 'string') return;

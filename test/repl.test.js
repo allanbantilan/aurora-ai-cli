@@ -15,6 +15,8 @@ import {
   formatPlanAnswers,
   parsePlanResponse,
   hasStructuredPlan,
+  toolActivityLabel,
+  permissionSummary,
   planActivityText,
   planChoiceOptions,
   planCompletionOptions,
@@ -381,3 +383,25 @@ test('hasStructuredPlan tolerates missing or partial shapes', () => {
   assert.equal(hasStructuredPlan({ title: 'x' }), true);
 });
 
+
+test('toolActivityLabel produces plain-language activity lines', () => {
+  assert.equal(toolActivityLabel('list_files', {}), 'scanning files...');
+  assert.equal(toolActivityLabel('write_file', { path: 'src/components/Cart.jsx' }), 'writing Cart.jsx...');
+  assert.equal(toolActivityLabel('edit_file', { path: String.raw`a\b\index.html` }), 'editing index.html...');
+  assert.equal(toolActivityLabel('read_file', { path: 'x.js' }), 'reading x.js...');
+  assert.equal(toolActivityLabel('run_command', { command: 'npm test' }), 'running npm test...');
+  assert.equal(toolActivityLabel('grep', { pattern: 'x' }), 'searching...');
+  assert.equal(toolActivityLabel('mystery_tool', {}), 'mystery_tool...');
+});
+
+test('toolActivityLabel never includes raw JSON braces', () => {
+  for (const name of ['list_files', 'write_file', 'edit_file', 'read_file', 'run_command', 'grep']) {
+    const label = toolActivityLabel(name, { path: 'a.js', command: 'dir', pattern: 'p' });
+    assert.doesNotMatch(label, /[{}"]/);
+  }
+});
+
+test('permissionSummary shows the tool and its target', () => {
+  assert.equal(permissionSummary('write_file', { path: 'products.json' }), 'write_file → products.json');
+  assert.equal(permissionSummary('run_command', { command: 'npm i' }), 'run_command → npm i');
+});
