@@ -178,6 +178,27 @@ test('onToolEnd fires with name, args and result after execution', async () => {
   assert.equal(calls[0].result, 'Wrote a.txt (2 chars)');
 });
 
+test('tool progress is forwarded while a tool executes', async () => {
+  const progress = [];
+  const client = fakeClient([
+    toolCallChunks('c1', 'run_command', '{"command":"composer install"}'),
+    [chunk({ content: 'done' })],
+  ]);
+  await runTurn({
+    client,
+    models: ['m'],
+    messages: [{ role: 'user', content: 'install' }],
+    tools: fakeTools(async (_name, _args, options) => {
+      options.onProgress('Downloading packages');
+      return 'installed';
+    }),
+    permissions: allowAll,
+    onToolProgress: (name, text) => progress.push([name, text]),
+  });
+
+  assert.deepEqual(progress, [['run_command', 'Downloading packages']]);
+});
+
 test('onToolEnd fires with the denial message when permission is refused', async () => {
   const calls = [];
   const client = fakeClient([

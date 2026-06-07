@@ -1,13 +1,12 @@
 import { exec } from 'node:child_process';
-import { promisify } from 'node:util';
 
-const execAsync = promisify(exec);
+const COMMAND_TIMEOUT_MS = 10 * 60_000;
 
 export const definition = {
   type: 'function',
   function: {
     name: 'run_command',
-    description: 'Run a shell command in the working directory. 60 second timeout.',
+    description: 'Run a shell command in the working directory. Reports live output progress. 10 minute timeout.',
     parameters: {
       type: 'object',
       properties: {
@@ -18,18 +17,22 @@ export const definition = {
   },
 };
 
-export async function execute({ command }, cwd = process.cwd()) {
-  try {
-    const { stdout, stderr } = await execAsync(command, {
+export async function execute({ command }, cwd = process.cwd(), { onProgress } = {}) {
+  return new Promise((resolve) => {
+    const child = exec(command, {
       cwd,
-      timeout: 60_000,
-      maxBuffer: 1024 * 1024,
+      env: { ...process.env, COMPOSER_NO_INTERACTION: '1' },
+      timeout: COMMAND_TIMEOUT_MS,
+      maxBuffer: 8 * 1024 * 1024,
+    }, (err, stdout, stderr) => {
+      const detail = [stdout, stderr].filter(Boolean).join('\n--- stderr ---\n').trim();
+      if (!err) return resolve(detail || '(no output)');
+      const reason = err.killed ? 'timed out after 10 minutes' : `exit code ${err.code}`;
+      resolve(`Command failed (${reason})${detail ? `:\n${detail}` : ''}`);
     });
-    const out = [stdout, stderr].filter(Boolean).join('\n--- stderr ---\n').trim();
-    return out || '(no output)';
-  } catch (err) {
-    const detail = [err.stdout, err.stderr].filter(Boolean).join('\n').trim();
-    const reason = err.killed ? 'timed out' : `exit code ${err.code}`;
-    return `Command failed (${reason})${detail ? `:\n${detail}` : ''}`;
-  }
+
+    const report = (chunk) => onProgress?.(String(chunk));
+    child.stdout?.on('data', report);
+    child.stderr?.on('data', report);
+  });
 }

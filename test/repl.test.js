@@ -7,6 +7,10 @@ import {
   buildInputPrompt,
   createEchoSuppressor,
   claimsUnappliedChanges,
+  isCommandFailure,
+  commandFailureGuidance,
+  isErroneousTaskDecline,
+  isPrematureEnvironmentAbandonment,
   completeCommand,
   commandList,
   modeOptions,
@@ -16,6 +20,7 @@ import {
   parsePlanResponse,
   hasStructuredPlan,
   toolActivityLabel,
+  commandProgressLabel,
   permissionSummary,
   createTickFilter,
   PHANTOM_RETRY_PROMPT,
@@ -26,7 +31,10 @@ import {
   PLAN_IMPLEMENT_PROMPT,
   PLAN_PROMPT,
   promoteModel,
+  prepareAgentInput,
+  inputMenuPrefix,
   shouldConfirmAuto,
+  ENVIRONMENT_CONTINUATION_RETRY_PROMPT,
 } from '../src/repl.js';
 
 test('createEchoSuppressor drops an exact first-line echo of the user input', () => {
@@ -123,6 +131,68 @@ test('completeCommand returns no hits for non-command input', () => {
   assert.deepEqual(completeCommand('/nope'), [[], '/nope']);
 });
 
+test('isErroneousTaskDecline catches the stock decline after tool execution', () => {
+  const decline = "I'm Aurora, a coding CLI agent. I can only help with code and software development tasks.";
+  assert.equal(isErroneousTaskDecline(decline, ['run_command']), true);
+  assert.equal(isErroneousTaskDecline(decline, []), false);
+  assert.equal(isErroneousTaskDecline('Dependency installed. Continuing.', ['run_command']), false);
+});
+
+test('isCommandFailure recognizes failed run_command results only', () => {
+  assert.equal(isCommandFailure('run_command', 'Command failed (exit code 1):\ncomposer not found'), true);
+  assert.equal(isCommandFailure('run_command', '(no output)'), false);
+  assert.equal(isCommandFailure('edit_file', 'Command failed (exit code 1)'), false);
+});
+
+test('commandFailureGuidance gives actionable Windows steps for a missing PHP executable', () => {
+  const steps = commandFailureGuidance(
+    'php artisan inertia:install vue',
+    "Command failed (exit code 1):\n'php' is not recognized as an internal or external command"
+  );
+
+  assert.deepEqual(steps, [
+    'Install PHP 8.3+ or add the folder containing php.exe to PATH.',
+    'Restart this terminal, then verify with: php -v',
+    'Retry: php artisan inertia:install vue',
+  ]);
+});
+
+test('commandFailureGuidance stays empty for ordinary command failures', () => {
+  assert.deepEqual(commandFailureGuidance('npm test', 'Command failed (exit code 1):\n3 tests failed'), []);
+});
+
+test('isPrematureEnvironmentAbandonment catches unsupported environment claims after command failure', () => {
+  const response = "PHP isn't available in this environment, so I can't execute composer create-project.";
+  assert.equal(
+    isPrematureEnvironmentAbandonment(response, ['Command failed (exit code 1):\ncomposer is not recognized']),
+    true
+  );
+  assert.equal(isPrematureEnvironmentAbandonment(response, []), false);
+  assert.equal(
+    isPrematureEnvironmentAbandonment(
+      'The command failed because composer is not recognized. I will inspect the available runtimes next.',
+      ['Command failed (exit code 1):\ncomposer is not recognized']
+    ),
+    false
+  );
+});
+
+test('environment continuation retry requests evidence-based diagnosis and continued work', () => {
+  assert.match(ENVIRONMENT_CONTINUATION_RETRY_PROMPT, /exact command failure/i);
+  assert.match(ENVIRONMENT_CONTINUATION_RETRY_PROMPT, /continue/i);
+});
+
+test('completeCommand completes @ agent names', () => {
+  assert.deepEqual(completeCommand('@rev'), [['@review'], '@rev']);
+});
+
+test('inputMenuPrefix detects bare slash and @ triggers only', () => {
+  assert.equal(inputMenuPrefix('/', 1), '/');
+  assert.equal(inputMenuPrefix('@', 1), '@');
+  assert.equal(inputMenuPrefix('@review', 7), '');
+  assert.equal(inputMenuPrefix('hello @', 7), '');
+});
+
 test('commandList includes every command with a description', () => {
   const text = commandList();
   for (const c of ['/model', '/permission', '/plan', '/clear', '/help', '/exit']) assert.match(text, new RegExp(c.replace('/', '\\/')));
@@ -140,6 +210,26 @@ test('buildInputPrompt is plain and does not show the active mode', () => {
   const prompt = buildInputPrompt('C:\\projects\\demo');
   assert.match(prompt, /C:\\projects\\demo/);
   assert.doesNotMatch(prompt, /\[Permission\]|\[Auto\]|\[Plan\]/);
+});
+
+test('prepareAgentInput expands recognized agents and preserves ordinary input', () => {
+  const routed = prepareAgentInput('@simplify src/utils.js');
+  assert.match(routed.announcement, /◆ @simplify dispatched/);
+  assert.match(routed.input, /Run the @simplify agent on: src\/utils\.js/);
+
+  assert.deepEqual(prepareAgentInput('explain this code'), {
+    input: 'explain this code',
+    announcement: '',
+    error: '',
+  });
+});
+
+test('prepareAgentInput returns validation errors without runnable input', () => {
+  assert.deepEqual(prepareAgentInput('@fix'), {
+    input: '',
+    announcement: '',
+    error: '@fix requires a file, error, or description.',
+  });
 });
 
 test('modeOptions lists Default and Auto but not Plan', () => {
@@ -401,6 +491,10 @@ test('toolActivityLabel never includes raw JSON braces', () => {
     const label = toolActivityLabel(name, { path: 'a.js', command: 'dir', pattern: 'p' });
     assert.doesNotMatch(label, /[{}"]/);
   }
+});
+
+test('commandProgressLabel shows the latest installer progress line', () => {
+  assert.equal(commandProgressLabel('Downloading 10%\rDownloading 20%\r'), 'running... Downloading 20%');
 });
 
 test('permissionSummary shows the tool and its target', () => {

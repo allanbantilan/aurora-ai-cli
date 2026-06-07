@@ -148,6 +148,15 @@ test('slashMenuReduce enter with no matches cancels', () => {
   assert.deepEqual([s.done, s.cancelled], [true, true]);
 });
 
+test('searchable command menu supports @ agent filters', () => {
+  const agents = [['@simplify', 'simplify code'], ['@review', 'audit code']];
+  let s = { all: agents, filter: '@', index: 0, done: false, cancelled: false, picked: null };
+  s = slashMenuReduce(s, { name: 'r' }, 'r');
+  assert.deepEqual(slashMatches(s.all, s.filter).map(([c]) => c), ['@review']);
+  s = slashMenuReduce(s, { name: 'return' });
+  assert.equal(s.picked, '@review');
+});
+
 test('menuReduce cycles with tab and back with shift-tab', () => {
   let s = { index: 0, count: 3, done: false, escaped: false };
   s = menuReduce(s, { name: 'tab' });
@@ -631,6 +640,21 @@ test('renderDoneSummary reports errors and never throws on empty input', () => {
   const out = renderDoneSummary([], { errors: 2, colors: false, ascii: false, columns: 80 });
   assert.match(out, /2 errors/);
   assert.doesNotMatch(out, /files created/);
+});
+
+test('renderDoneSummary replaces the generic prompt with actionable recovery steps', () => {
+  const out = renderDoneSummary([], {
+    errors: 1,
+    nextSteps: ['Install PHP 8.3+.', 'Verify with: php -v', 'Retry: php artisan inertia:install vue'],
+    colors: false,
+    ascii: false,
+    columns: 80,
+  });
+
+  assert.match(out, /Fix required:/);
+  assert.match(out, /1\. Install PHP 8\.3\+\./);
+  assert.match(out, /3\. Retry: php artisan inertia:install vue/);
+  assert.doesNotMatch(out, /What should Aurora do next/);
 });
 
 test('renderDoneSummary shows aligned one-line notes for each file', () => {

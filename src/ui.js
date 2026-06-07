@@ -344,10 +344,10 @@ export function slashMatches(all, filter) {
 }
 
 /**
- * Pure keypress → state transition for the searchable slash-command menu.
- * state: { all: [[cmd, desc]], filter: '/...', index, done, cancelled, picked }.
+ * Pure keypress → state transition for the searchable command menu.
+ * state: { all: [[cmd, desc]], filter: '/...'|'@...', index, done, cancelled, picked }.
  * Printable keys extend the filter (live search); backspace shrinks it —
- * backspacing past "/" cancels back to the normal prompt.
+ * backspacing past the prefix cancels back to the normal prompt.
  */
 export function slashMenuReduce(state, key = {}, str = '') {
   const visible = slashMatches(state.all, state.filter);
@@ -375,13 +375,13 @@ export function slashMenuReduce(state, key = {}, str = '') {
 }
 
 /**
- * Live searchable slash-command menu (Claude-Code style): shows all commands,
+ * Live searchable command menu (Claude-Code style): shows all commands,
  * narrows as the user types, ↑↓/Tab to move, Enter selects, Esc/backspace-past-/
  * cancels. commands: [[cmd, desc]]. Resolves the picked command or null.
  */
 export function slashMenu(rl, commands) {
   return new Promise((resolve) => {
-    let state = { all: commands, filter: '/', index: 0, done: false, cancelled: false, picked: null };
+    let state = { all: commands, filter: commands[0]?.[0]?.[0] || '/', index: 0, done: false, cancelled: false, picked: null };
     let lastLines = 0;
     const commandWidth = Math.max(...commands.map(([cmd]) => cmd.length)) + 1;
 
@@ -608,7 +608,13 @@ export function renderPlan(
  */
 export function renderDoneSummary(
   files,
-  { errors = 0, colors = colorEnabled, ascii = legacyConhost, columns = process.stdout.columns || 80 } = {}
+  {
+    errors = 0,
+    nextSteps = [],
+    colors = colorEnabled,
+    ascii = legacyConhost,
+    columns = process.stdout.columns || 80,
+  } = {}
 ) {
   const c = colors
     ? { cyan: forceCyan, dim: forceDim, green: forceGreen, yellow: forceYellow }
@@ -644,6 +650,11 @@ export function renderDoneSummary(
     const note = f.note ? `  ${c.dim(f.note)}` : '';
     out.push(`   ${(f.change === '+' ? c.green : c.yellow)(f.change)}  ${c.cyan(p.padEnd(pathWidth))}${note}`);
   }
-  out.push('', `${c.cyan('❯')} What should Aurora do next?`);
+  if (nextSteps.length) {
+    out.push('', c.yellow('Fix required:'));
+    nextSteps.forEach((step, index) => out.push(`  ${index + 1}. ${step}`));
+  } else {
+    out.push('', `${c.cyan('❯')} What should Aurora do next?`);
+  }
   return out.join('\n');
 }

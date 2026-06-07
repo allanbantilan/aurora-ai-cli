@@ -6,6 +6,7 @@ import { runTurn } from './agent.js';
 import * as tools from './tools/index.js';
 import { createPermissions } from './permissions.js';
 import { systemPrompt } from './prompt.js';
+import { AGENT_COMMANDS, routeAgentInput } from './agents.js';
 import { fetchModelStatus } from './client.js';
 import { modeLabel } from './modes.js';
 import { formatDiff } from './diff.js';
@@ -46,6 +47,17 @@ const PLAN_PROTOCOL_RE = /\n?<!-- AURORA_PLAN_PROTOCOL\s*\n([\s\S]*?)\s*-->\s*$/
 
 export function buildInputPrompt(cwd) {
   return `${dim(cwd)} ${cyan('❯')} `;
+}
+
+export function prepareAgentInput(input) {
+  const routed = routeAgentInput(input);
+  if (!routed.matched) return { input, announcement: '', error: '' };
+  if (routed.error) return { input: '', announcement: '', error: routed.error };
+  return { input: routed.input, announcement: routed.announcement, error: '' };
+}
+
+export function inputMenuPrefix(line, cursor) {
+  return cursor === 1 && (line === '/' || line === '@') ? line : '';
 }
 
 export function modeOptions() {
@@ -214,6 +226,15 @@ export function toolActivityLabel(name, args = {}) {
   }
 }
 
+export function commandProgressLabel(text) {
+  const line = String(text)
+    .split(/[\r\n]+/)
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .at(-1);
+  return line ? `running... ${line.slice(0, 100)}` : 'running command...';
+}
+
 /** One-line "tool → target" summary for the permission prompt. */
 export function permissionSummary(name, args = {}) {
   const target = name === 'run_command' ? String(args.command ?? '') : String(args.path ?? '');
@@ -247,10 +268,10 @@ export function formatPlanAnswers(answers) {
   ].join('\n');
 }
 
-/** readline completer: Tab after "/" completes among the slash commands. */
+/** readline completer: Tab completes slash commands and @ agents. */
 export function completeCommand(line) {
-  if (!line.startsWith('/')) return [[], line];
-  const hits = COMMANDS.map(([c]) => c).filter((c) => c.startsWith(line));
+  const choices = line.startsWith('/') ? COMMANDS : line.startsWith('@') ? AGENT_COMMANDS : [];
+  const hits = choices.map(([command]) => command).filter((command) => command.startsWith(line));
   return [hits, line];
 }
 
@@ -395,32 +416,41 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
   const prompt = () => buildInputPrompt(process.cwd());
 
   /**
-   * Read one line of input. In interactive mode, typing "/" as the first
-   * character aborts the pending question and opens the live searchable
-   * command menu (Claude-Code style); picking a command returns it as if typed.
+   * Read one line of input. In interactive mode, typing "/" or "@" as the
+   * first character opens the matching live searchable command menu.
    */
   const readInput = async () => {
+    let prefill = '';
     for (;;) {
       if (!interactiveEnabled) return (await rl.question(prompt())).trim();
       const ac = new AbortController();
+      let menuPrefix = '';
       const watch = () => {
-        if (rl.line === '/' && rl.cursor === 1) ac.abort();
+        menuPrefix = inputMenuPrefix(rl.line, rl.cursor);
+        if (menuPrefix) ac.abort();
       };
       process.stdin.on('keypress', watch);
       try {
-        return (await rl.question(prompt(), { signal: ac.signal })).trim();
+        const answer = rl.question(prompt(), { signal: ac.signal });
+        if (prefill) {
+          rl.write(prefill);
+          prefill = '';
+        }
+        return (await answer).trim();
       } catch (err) {
         if (err.name !== 'AbortError') throw err;
         rl.line = '';
         rl.cursor = 0;
         process.stdout.write('\x1B[1A\r\x1B[2K');
-        // user typed "/": hand the keyboard to the search menu
-        const picked = await slashMenu(rl, COMMANDS);
+        const picked = await slashMenu(rl, menuPrefix === '@' ? AGENT_COMMANDS : COMMANDS);
         if (picked) {
-          console.log(`${prompt()}${picked}`); // leave a record as if the user typed it
+          if (menuPrefix === '@') {
+            prefill = `${picked} `;
+            continue;
+          }
+          console.log(`${prompt()}${picked}`);
           return picked;
         }
-        // cancelled — fall through and re-prompt
       } finally {
         process.stdin.removeListener('keypress', watch);
       }
@@ -511,12 +541,23 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
       continue;
     }
 
+    const agentInput = prepareAgentInput(input);
+    if (agentInput.error) {
+      console.log(red(agentInput.error));
+      continue;
+    }
+    if (agentInput.announcement) console.log(agentInput.announcement);
+    input = agentInput.input;
+
     let planningSession = previousModeAfterTurn !== null;
     let planShownThisSession = false;
     const turnFileOps = [];
     const turnFileNotes = new Map();
+    const turnCommandFailures = [];
     let turnErrors = 0;
     let phantomRetried = false;
+    let declineRetried = false;
+    let environmentRetried = false;
     try {
       while (input) {
         messages.push({ role: 'user', content: input });
@@ -529,6 +570,7 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
         let reasoningStarted = 0;
         let assistantText = '';
         let aiPrefixPrinted = false;
+        const commandFailures = [];
         toolsExecuted = [];
         const planActivityStarted = Date.now();
         spinner.start(planningSession ? () => planActivityText(planActivityStarted) : 'thinking...');
@@ -563,9 +605,20 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
             // never dump raw [tool] JSON — show a plain-language activity line instead
             spinner.start(toolActivityLabel(name, args));
           },
+          onToolProgress: (name, text) => {
+            if (name === 'run_command') spinner.update(commandProgressLabel(text));
+          },
           onToolEnd: (name, args, result) => {
             const resume = () =>
               spinner.start(planningSession ? () => planActivityText(planActivityStarted) : 'thinking...');
+            if (isCommandFailure(name, result)) {
+              commandFailures.push(result);
+              turnCommandFailures.push({ command: String(args.command ?? ''), result });
+              turnErrors += 1;
+              spinner.stop();
+              console.log(`\n${red(result)}`);
+              return resume();
+            }
             if (!DIFF_TOOLS.has(name) || typeof args.path !== 'string' || typeof result !== 'string') {
               return resume(); // tool finished: clear its activity line
             }
@@ -597,6 +650,16 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
           tickFilter.flush();
           process.stdout.write(highlighter.flush());
           console.log();
+          if (isPrematureEnvironmentAbandonment(assistantText, commandFailures) && !environmentRetried) {
+            environmentRetried = true;
+            input = ENVIRONMENT_CONTINUATION_RETRY_PROMPT;
+            continue;
+          }
+          if (isErroneousTaskDecline(assistantText, toolsExecuted) && !declineRetried) {
+            declineRetried = true;
+            input = TASK_CONTINUATION_RETRY_PROMPT;
+            continue;
+          }
           if (claimsUnappliedChanges(assistantText, toolsExecuted)) {
             if (!phantomRetried) {
               // silent auto-retry: tell the model to actually apply what it described
@@ -614,7 +677,10 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
               return '';
             };
             const files = turnFileOps.map((op) => ({ ...op, note: noteFor(op.path) }));
-            console.log(`\n${renderDoneSummary(files, { errors: turnErrors })}`);
+            const nextSteps = [
+              ...new Set(turnCommandFailures.flatMap(({ command, result }) => commandFailureGuidance(command, result))),
+            ];
+            console.log(`\n${renderDoneSummary(files, { errors: turnErrors, nextSteps })}`);
           }
           break;
         }
@@ -663,6 +729,11 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
 }
 
 const WRITE_TOOLS = new Set(['write_file', 'edit_file', 'run_command']);
+const STOCK_TASK_DECLINE = "I'm Aurora, a coding CLI agent. I can only help with code and software development tasks.";
+export const TASK_CONTINUATION_RETRY_PROMPT =
+  'Continue the active coding task from the latest tool result. Do not decline; the user request is software development.';
+export const ENVIRONMENT_CONTINUATION_RETRY_PROMPT =
+  'Continue the active coding task. Use the exact command failure as evidence, diagnose it with available tools, and try a safe fallback. Do not stop merely by claiming the environment is unavailable.';
 // Claim language: "I/we (have) added ..." anywhere, or a past-tense change verb
 // at the start of the message/a sentence ("Replaced the original page with...",
 // "Created a new file **about.html**..."), as real model summaries phrase it.
@@ -688,6 +759,41 @@ export function promoteModel(chain, from, to) {
 export function claimsUnappliedChanges(text, toolNames) {
   if (toolNames.some((n) => WRITE_TOOLS.has(n))) return false;
   return CLAIM_RE.test(text);
+}
+
+export function isErroneousTaskDecline(text, toolNames) {
+  return toolNames.length > 0 && text.trim() === STOCK_TASK_DECLINE;
+}
+
+export function isCommandFailure(name, result) {
+  return name === 'run_command' && typeof result === 'string' && result.startsWith('Command failed');
+}
+
+export function commandFailureGuidance(command, result) {
+  const missing = result.match(/'([^']+)' is not recognized as an internal or external command/i)?.[1];
+  if (!missing) return [];
+
+  if (missing.toLowerCase() === 'php') {
+    return [
+      'Install PHP 8.3+ or add the folder containing php.exe to PATH.',
+      'Restart this terminal, then verify with: php -v',
+      `Retry: ${command}`,
+    ];
+  }
+
+  return [
+    `Install ${missing} or add its executable folder to PATH.`,
+    `Restart this terminal, then verify with: ${missing} --version`,
+    `Retry: ${command}`,
+  ];
+}
+
+export function isPrematureEnvironmentAbandonment(text, commandFailures) {
+  if (!commandFailures.length) return false;
+  const unavailableClaim =
+    /\b(?:php|composer|node|npm|runtime|command|dependency|tool|environment)\b[\s\S]{0,80}\b(?:isn't|is not|aren't|are not|unavailable|missing|not installed|not available)\b/i;
+  const abandonment = /\b(?:I|we)\s+(?:can't|cannot|couldn't|could not|am unable to|are unable to)\b/i;
+  return unavailableClaim.test(text) && abandonment.test(text);
 }
 
 export function createEchoSuppressor(input, write) {

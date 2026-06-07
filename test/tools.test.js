@@ -57,6 +57,25 @@ test('write_file creates a file, including parent dirs', () => {
   assert.equal(fs.readFileSync(path.join(dir, 'new', 'deep', 'file.txt'), 'utf8'), 'hi');
 });
 
+test('write_file rejects new Laravel files when Laravel is not installed', () => {
+  const dir = tmpProject();
+  assert.throws(
+    () => writeFile.execute({ path: 'resources/views/landing.blade.php', content: '<h1>Hi</h1>' }, dir),
+    /Laravel is not confirmed/i
+  );
+  assert.equal(fs.existsSync(path.join(dir, 'resources', 'views', 'landing.blade.php')), false);
+});
+
+test('write_file allows new Laravel files in a verified Laravel project', () => {
+  const dir = tmpProject();
+  fs.writeFileSync(path.join(dir, 'artisan'), '');
+  fs.writeFileSync(path.join(dir, 'composer.json'), JSON.stringify({ require: { 'laravel/framework': '^12.0' } }));
+
+  writeFile.execute({ path: 'routes/web.php', content: '<?php' }, dir);
+
+  assert.equal(fs.readFileSync(path.join(dir, 'routes', 'web.php'), 'utf8'), '<?php');
+});
+
 test('write_file rejects path escape', () => {
   const dir = tmpProject();
   assert.throws(() => writeFile.execute({ path: '../evil.txt', content: 'x' }, dir), /escapes/);
@@ -94,6 +113,28 @@ test('edit_file treats $ patterns in new_string literally', () => {
 test('run_command captures stdout', async () => {
   const dir = tmpProject();
   const out = await runCommand.execute({ command: 'node -e "console.log(1)"' }, dir);
+  assert.match(out, /1/);
+});
+
+test('run_command reports output progress before completion', async () => {
+  const dir = tmpProject();
+  const progress = [];
+  const out = await runCommand.execute(
+    { command: 'node -e "console.log(\'installing\'); setTimeout(() => console.log(\'done\'), 30)"' },
+    dir,
+    { onProgress: (text) => progress.push(text) }
+  );
+
+  assert.ok(progress.some((text) => text.includes('installing')));
+  assert.match(out, /done/);
+});
+
+test('run_command disables interactive Composer prompts', async () => {
+  const dir = tmpProject();
+  const out = await runCommand.execute(
+    { command: 'node -e "console.log(process.env.COMPOSER_NO_INTERACTION)"' },
+    dir
+  );
   assert.match(out, /1/);
 });
 

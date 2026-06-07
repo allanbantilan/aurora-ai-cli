@@ -19,11 +19,13 @@ export const RISKY = new Set(['write_file', 'edit_file', 'run_command']);
 
 const MAX_RESULT_CHARS = 8_000;
 
-export async function executeTool(name, args, cwd = process.cwd()) {
+export async function executeTool(name, args, cwdOrOptions = process.cwd(), options = {}) {
   const tool = tools[name];
   if (!tool) return `Error: unknown tool "${name}"`;
+  const cwd = typeof cwdOrOptions === 'string' ? cwdOrOptions : process.cwd();
+  const executionOptions = typeof cwdOrOptions === 'string' ? options : cwdOrOptions;
   try {
-    const result = await tool.execute(args, cwd);
+    const result = await tool.execute(args, cwd, executionOptions);
     return truncate(String(result));
   } catch (err) {
     return `Error: ${err.message}`;
