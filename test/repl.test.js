@@ -1,11 +1,15 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import {
   applyModeSelection,
   autoConfirmationOptions,
   AUTO_WARNING,
   buildInputPrompt,
   createEchoSuppressor,
+  createToolPayloadSuppressor,
   claimsUnappliedChanges,
   isCommandFailure,
   commandFailureGuidance,
@@ -21,6 +25,8 @@ import {
   hasStructuredPlan,
   toolActivityLabel,
   commandProgressLabel,
+  reasoningActivityLabel,
+  scaffoldCompletionGaps,
   permissionSummary,
   createTickFilter,
   PHANTOM_RETRY_PROMPT,
@@ -131,6 +137,25 @@ test('completeCommand returns no hits for non-command input', () => {
   assert.deepEqual(completeCommand('/nope'), [[], '/nope']);
 });
 
+test('createToolPayloadSuppressor hides raw file-tool JSON and reports it', () => {
+  let out = '';
+  const push = createToolPayloadSuppressor((text) => { out += text; });
+  push('{\n  "path": "routes/web.php",\n');
+  push('  "content": "<?php"\n}');
+
+  assert.equal(push.flush(), true);
+  assert.equal(out, '');
+});
+
+test('createToolPayloadSuppressor streams normal prose unchanged', () => {
+  let out = '';
+  const push = createToolPayloadSuppressor((text) => { out += text; });
+  push('I will inspect the route first.');
+
+  assert.equal(push.flush(), false);
+  assert.equal(out, 'I will inspect the route first.');
+});
+
 test('isErroneousTaskDecline catches the stock decline after tool execution', () => {
   const decline = "I'm Aurora, a coding CLI agent. I can only help with code and software development tasks.";
   assert.equal(isErroneousTaskDecline(decline, ['run_command']), true);
@@ -219,6 +244,21 @@ test('prepareAgentInput expands recognized agents and preserves ordinary input',
 
   assert.deepEqual(prepareAgentInput('explain this code'), {
     input: 'explain this code',
+    announcement: '',
+    error: '',
+  });
+});
+
+test('prepareAgentInput auto-routes fresh framework project requests to scaffold', () => {
+  const routed = prepareAgentInput('create a fresh laravel project here, make it a landing page');
+  assert.match(routed.announcement, /◆ @scaffold dispatched/);
+  assert.match(routed.input, /composer create-project laravel\/laravel \./);
+  assert.match(routed.input, /make it a landing page/);
+});
+
+test('prepareAgentInput does not route non-Laravel projects to the Laravel scaffold agent', () => {
+  assert.deepEqual(prepareAgentInput('create a React project'), {
+    input: 'create a React project',
     announcement: '',
     error: '',
   });
@@ -495,6 +535,42 @@ test('toolActivityLabel never includes raw JSON braces', () => {
 
 test('commandProgressLabel shows the latest installer progress line', () => {
   assert.equal(commandProgressLabel('Downloading 10%\rDownloading 20%\r'), 'running... Downloading 20%');
+});
+
+test('commandProgressLabel includes elapsed time during silent command phases', () => {
+  assert.equal(commandProgressLabel('Generating optimized autoload files', 42), 'running (42s)... Generating optimized autoload files');
+});
+
+test('reasoningActivityLabel retains the last command context', () => {
+  assert.equal(reasoningActivityLabel('composer create-project laravel/laravel .', 5), 'reasoning after composer create-project laravel/laravel . (5s)...');
+});
+
+test('scaffoldCompletionGaps reports missing route, page sections, and build verification', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'aurora-scaffold-'));
+  fs.mkdirSync(path.join(dir, 'routes'), { recursive: true });
+  fs.mkdirSync(path.join(dir, 'resources', 'views'), { recursive: true });
+  fs.writeFileSync(path.join(dir, 'artisan'), '');
+  fs.writeFileSync(path.join(dir, 'routes', 'web.php'), "<?php\nRoute::get('/', fn () => view('welcome'));\n");
+  fs.writeFileSync(path.join(dir, 'resources', 'views', 'app.blade.php'), '<html>@inertia()</html>');
+
+  assert.deepEqual(scaffoldCompletionGaps(dir, []), [
+    'Verify Laravel with php artisan --version.',
+    'Add a named landing route in routes/web.php.',
+    'Create a landing page with hero, features, CTA, and footer sections.',
+    'Add Tailwind utility classes to the landing page.',
+    'Run npm run build successfully.',
+  ]);
+});
+
+test('scaffoldCompletionGaps accepts a complete Blade landing page and successful build', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'aurora-scaffold-'));
+  fs.mkdirSync(path.join(dir, 'routes'), { recursive: true });
+  fs.mkdirSync(path.join(dir, 'resources', 'views'), { recursive: true });
+  fs.writeFileSync(path.join(dir, 'artisan'), '');
+  fs.writeFileSync(path.join(dir, 'routes', 'web.php'), "<?php\nRoute::get('/', fn () => view('landing'))->name('landing');\n");
+  fs.writeFileSync(path.join(dir, 'resources', 'views', 'landing.blade.php'), '<section class="flex">hero</section><section>features</section><section>CTA</section><footer>footer</footer>');
+
+  assert.deepEqual(scaffoldCompletionGaps(dir, ['php artisan --version', 'npm run build']), []);
 });
 
 test('permissionSummary shows the tool and its target', () => {

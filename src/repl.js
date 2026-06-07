@@ -50,7 +50,9 @@ export function buildInputPrompt(cwd) {
 }
 
 export function prepareAgentInput(input) {
-  const routed = routeAgentInput(input);
+  const scaffoldIntent =
+    /\b(?:fresh\s+laravel\s+project|create\s+(?:a\s+)?(?:fresh\s+)?laravel\s+project)\b/i.test(input);
+  const routed = routeAgentInput(scaffoldIntent && !input.trimStart().startsWith('@') ? `@scaffold ${input}` : input);
   if (!routed.matched) return { input, announcement: '', error: '' };
   if (routed.error) return { input: '', announcement: '', error: routed.error };
   return { input: routed.input, announcement: routed.announcement, error: '' };
@@ -226,13 +228,65 @@ export function toolActivityLabel(name, args = {}) {
   }
 }
 
-export function commandProgressLabel(text) {
+export function commandProgressLabel(text, elapsedSeconds) {
   const line = String(text)
     .split(/[\r\n]+/)
     .map((part) => part.trim())
     .filter(Boolean)
     .at(-1);
-  return line ? `running... ${line.slice(0, 100)}` : 'running command...';
+  const elapsed = Number.isFinite(elapsedSeconds) ? ` (${elapsedSeconds}s)` : '';
+  return line ? `running${elapsed}... ${line.slice(0, 100)}` : `running command${elapsed}...`;
+}
+
+export function reasoningActivityLabel(lastCommand, elapsedSeconds) {
+  const context = lastCommand ? ` after ${String(lastCommand).slice(0, 80)}` : '';
+  return `reasoning${context} (${elapsedSeconds}s)...`;
+}
+
+function readTextOrEmpty(file) {
+  try {
+    return fs.readFileSync(file, 'utf8');
+  } catch {
+    return '';
+  }
+}
+
+function collectPageText(cwd) {
+  const roots = [path.join(cwd, 'resources', 'views'), path.join(cwd, 'resources', 'js', 'Pages')];
+  const files = [];
+  const walk = (dir) => {
+    if (!fs.existsSync(dir)) return;
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) walk(full);
+      else if (/\.(?:blade\.php|vue)$/i.test(entry.name)) files.push(full);
+    }
+  };
+  roots.forEach(walk);
+  return files.map(readTextOrEmpty).join('\n');
+}
+
+export function scaffoldCompletionGaps(cwd, successfulCommands) {
+  const gaps = [];
+  const route = readTextOrEmpty(path.join(cwd, 'routes', 'web.php'));
+  const pages = collectPageText(cwd);
+  if (!fs.existsSync(path.join(cwd, 'artisan'))) gaps.push('Install Laravel before building the feature.');
+  if (!successfulCommands.some((command) => /\bphp\s+artisan\s+--version\b/i.test(command))) {
+    gaps.push('Verify Laravel with php artisan --version.');
+  }
+  if (!/Route::get\(\s*['"]\/['"]/i.test(route) || !/->name\(\s*['"][^'"]+['"]\s*\)/i.test(route)) {
+    gaps.push('Add a named landing route in routes/web.php.');
+  }
+  if (!['hero', 'features', 'cta', 'footer'].every((section) => new RegExp(section, 'i').test(pages))) {
+    gaps.push('Create a landing page with hero, features, CTA, and footer sections.');
+  }
+  if (!/\bclass\s*=\s*["'][^"']*(?:flex|grid|bg-|text-|px-|py-|mx-|my-|max-w-)/i.test(pages)) {
+    gaps.push('Add Tailwind utility classes to the landing page.');
+  }
+  if (!successfulCommands.some((command) => /\bnpm\s+run\s+build\b/i.test(command))) {
+    gaps.push('Run npm run build successfully.');
+  }
+  return gaps;
 }
 
 /** One-line "tool → target" summary for the permission prompt. */
@@ -547,6 +601,7 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
       continue;
     }
     if (agentInput.announcement) console.log(agentInput.announcement);
+    const scaffoldSession = /@scaffold dispatched/.test(agentInput.announcement);
     input = agentInput.input;
 
     let planningSession = previousModeAfterTurn !== null;
@@ -554,10 +609,13 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
     const turnFileOps = [];
     const turnFileNotes = new Map();
     const turnCommandFailures = [];
+    const successfulCommands = [];
     let turnErrors = 0;
     let phantomRetried = false;
     let declineRetried = false;
     let environmentRetried = false;
+    let toolPayloadRetried = false;
+    let lastCommand = '';
     try {
       while (input) {
         messages.push({ role: 'user', content: input });
@@ -567,9 +625,18 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
           (file, note) => turnFileNotes.set(file, note)
         );
         const writeModelText = createEchoSuppressor(input, tickFilter);
-        let reasoningStarted = 0;
-        let assistantText = '';
         let aiPrefixPrinted = false;
+        const toolPayloadSuppressor = createToolPayloadSuppressor((t) => {
+          if (!aiPrefixPrinted) {
+            aiPrefixPrinted = true;
+            process.stdout.write(`\n${magenta('◆')}  `);
+          }
+          writeModelText(t);
+        });
+        let reasoningStarted = 0;
+        let commandStarted = 0;
+        let latestCommandProgress = '';
+        let assistantText = '';
         const commandFailures = [];
         toolsExecuted = [];
         const planActivityStarted = Date.now();
@@ -584,29 +651,41 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
             assistantText += t;
             if (planningSession) return;
             spinner.stop();
-            if (!aiPrefixPrinted) {
-              aiPrefixPrinted = true;
-              process.stdout.write(`\n${magenta('◆')}  `);
-            }
-            writeModelText(t);
+            toolPayloadSuppressor(t);
           },
           onReasoning: () => {
             if (reasoningStarted) return; // installed once per reasoning phase
             reasoningStarted = Date.now();
             // time-driven: the spinner re-renders this every frame, so the
             // elapsed counter keeps ticking even when reasoning deltas pause
-            spinner.update(() => `reasoning... (${Math.round((Date.now() - reasoningStarted) / 1000)}s)`);
+            spinner.update(() =>
+              reasoningActivityLabel(lastCommand, Math.round((Date.now() - reasoningStarted) / 1000))
+            );
           },
           onToolStart: (name, args) => {
             if (DIFF_TOOLS.has(name) && typeof args.path === 'string') {
               editSnapshot = readFileOrNull(args.path);
             }
             reasoningStarted = 0;
+            if (name === 'run_command') {
+              lastCommand = String(args.command ?? '');
+              commandStarted = Date.now();
+              latestCommandProgress = lastCommand;
+              spinner.start(() =>
+                commandProgressLabel(latestCommandProgress, Math.round((Date.now() - commandStarted) / 1000))
+              );
+              return;
+            }
             // never dump raw [tool] JSON — show a plain-language activity line instead
             spinner.start(toolActivityLabel(name, args));
           },
           onToolProgress: (name, text) => {
-            if (name === 'run_command') spinner.update(commandProgressLabel(text));
+            if (name === 'run_command') {
+              latestCommandProgress = text;
+              spinner.update(() =>
+                commandProgressLabel(latestCommandProgress, Math.round((Date.now() - commandStarted) / 1000))
+              );
+            }
           },
           onToolEnd: (name, args, result) => {
             const resume = () =>
@@ -618,6 +697,9 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
               spinner.stop();
               console.log(`\n${red(result)}`);
               return resume();
+            }
+            if (name === 'run_command' && typeof result === 'string' && !result.startsWith('User denied') && !result.startsWith('Error')) {
+              successfulCommands.push(String(args.command ?? ''));
             }
             if (!DIFF_TOOLS.has(name) || typeof args.path !== 'string' || typeof result !== 'string') {
               return resume(); // tool finished: clear its activity line
@@ -646,10 +728,23 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
         spinner.stop();
 
         if (!planningSession) {
+          const suppressedToolPayload = toolPayloadSuppressor.flush();
           writeModelText.flush();
           tickFilter.flush();
           process.stdout.write(highlighter.flush());
           console.log();
+          if (suppressedToolPayload && !toolPayloadRetried) {
+            toolPayloadRetried = true;
+            input = TOOL_PAYLOAD_RETRY_PROMPT;
+            continue;
+          }
+          if (scaffoldSession) {
+            const gaps = scaffoldCompletionGaps(process.cwd(), successfulCommands);
+            if (gaps.length) {
+              input = `The scaffold task is not complete. Continue working and satisfy every missing requirement:\n- ${gaps.join('\n- ')}`;
+              continue;
+            }
+          }
           if (isPrematureEnvironmentAbandonment(assistantText, commandFailures) && !environmentRetried) {
             environmentRetried = true;
             input = ENVIRONMENT_CONTINUATION_RETRY_PROMPT;
@@ -734,6 +829,8 @@ export const TASK_CONTINUATION_RETRY_PROMPT =
   'Continue the active coding task from the latest tool result. Do not decline; the user request is software development.';
 export const ENVIRONMENT_CONTINUATION_RETRY_PROMPT =
   'Continue the active coding task. Use the exact command failure as evidence, diagnose it with available tools, and try a safe fallback. Do not stop merely by claiming the environment is unavailable.';
+export const TOOL_PAYLOAD_RETRY_PROMPT =
+  'The previous response emitted raw tool arguments as text. Invoke the appropriate tool with those arguments now; do not print the JSON.';
 // Claim language: "I/we (have) added ..." anywhere, or a past-tense change verb
 // at the start of the message/a sentence ("Replaced the original page with...",
 // "Created a new file **about.html**..."), as real model summaries phrase it.
@@ -829,4 +926,41 @@ export function createEchoSuppressor(input, write) {
   };
 
   return suppress;
+}
+
+export function createToolPayloadSuppressor(write) {
+  let buffer = '';
+  let buffering = true;
+
+  const push = (chunk) => {
+    if (!buffering) return write(chunk);
+    buffer += chunk;
+    if (/^\s*\{/.test(buffer)) return;
+    buffering = false;
+    write(buffer);
+    buffer = '';
+  };
+
+  push.flush = () => {
+    if (!buffering) return false;
+    const trimmed = buffer.trim();
+    let payload;
+    try {
+      payload = JSON.parse(trimmed);
+    } catch {
+      write(buffer);
+      buffer = '';
+      return false;
+    }
+    const keys = payload && typeof payload === 'object' ? Object.keys(payload) : [];
+    const isToolPayload =
+      keys.includes('command') ||
+      keys.includes('pattern') ||
+      (keys.includes('path') && keys.some((key) => ['content', 'old_string', 'new_string'].includes(key)));
+    if (!isToolPayload) write(buffer);
+    buffer = '';
+    return isToolPayload;
+  };
+
+  return push;
 }

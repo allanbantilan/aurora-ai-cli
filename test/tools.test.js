@@ -138,6 +138,17 @@ test('run_command disables interactive Composer prompts', async () => {
   assert.match(out, /1/);
 });
 
+test('run_command timeout terminates descendant processes and resolves', async () => {
+  const dir = tmpProject();
+  const started = Date.now();
+  const command =
+    'node -e "require(\'node:child_process\').spawn(process.execPath,[\'-e\',\'setInterval(()=>{},1000)\'],{stdio:\'inherit\'}); setInterval(()=>{},1000)"';
+  const out = await runCommand.execute({ command }, dir, { timeoutMs: 100 });
+
+  assert.match(out, /timed out/i);
+  assert.ok(Date.now() - started < 5000);
+});
+
 test('run_command reports failure without throwing', async () => {
   const dir = tmpProject();
   const out = await runCommand.execute({ command: 'node -e "process.exit(3)"' }, dir);

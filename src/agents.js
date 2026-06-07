@@ -6,6 +6,21 @@ const SHARED_RULES = `Shared agent rules:
 - Always follow PSR-12 for PHP. Use PHP 8.3+ features where applicable (readonly, enums, match, named args, constructor promotion).
 - Prefer Laravel conventions over custom solutions. Never reinvent what the framework already provides.`;
 
+const CONTRACT_RULES = `
+## Data contract rules (apply to every agent that touches controllers OR Vue pages)
+- Before writing a controller method, decide the exact prop shape it will pass to Inertia::render().
+- Before writing a Vue page, confirm the prop shape from the controller.
+- These must match exactly. Mismatches cause "Cannot read properties of undefined" at runtime.
+- Document the contract as a comment at the top of each Vue page:
+    // CONTRACT: { products: LengthAwarePaginator<Product>, filters: { search: string } }
+- Paginated Eloquent results passed via Inertia arrive as a plain object with keys:
+    { data: Product[], links: [], meta: { current_page, last_page, total, ... } }
+  Always use defineProps({ products: Object }) for paginated results — not Array.
+- Single model results arrive as a plain object: defineProps({ product: Object }).
+- Never pass an entire Eloquent collection when only a subset of fields is needed.
+  Use ->only() on resources or select() on queries.
+`;
+
 const AGENTS = {
   simplify: {
     needsArgument: true,
@@ -211,6 +226,134 @@ Run the command(s) in order. After scaffolding, open each generated file and:
 End with exactly: "✓ Scaffolded: [list of files created]."`,
   },
 
+  scaffold: {
+    needsArgument: true,
+    description: 'scaffold a fresh Laravel + Vue 3 + Inertia + Tailwind project, then build the requested feature',
+    instruction: (target) => `Run the @scaffold agent for: ${target}
+
+You must complete every numbered step in order. Do not skip any step. Do not print the done summary until Step 8 passes.
+
+━━━ PHASE 1: INSTALL ━━━
+
+Step 1 — Check if Laravel is already installed.
+  Action: run list_files on the cwd.
+  If composer.json AND artisan are both present → skip to Step 3.
+  If either is missing → continue to Step 2.
+
+Step 2 — Install Laravel.
+  Action: run_command → composer create-project laravel/laravel .
+  Then run: php artisan --version
+  If the command fails, report the exact error and stop. Do not continue.
+  ✓ checkpoint: artisan is now present in cwd.
+
+━━━ PHASE 2: FRONTEND STACK ━━━
+
+Step 3 — Install PHP dependencies for Inertia.
+  Action: run_command → composer require inertiajs/inertia-laravel
+  Then run: composer show inertiajs/inertia-laravel to confirm it installed.
+
+Step 4 — Publish and register Inertia middleware.
+  Action: run_command → php artisan inertia:middleware
+  Read bootstrap/app.php and register HandleInertiaRequests in the web middleware append list.
+  For Laravel 10, read app/Http/Kernel.php and append it to $middlewareGroups['web'].
+
+Step 5 — Install JS dependencies.
+  Action: run_command → npm install @inertiajs/vue3 vue @vitejs/plugin-vue tailwindcss @tailwindcss/forms autoprefixer postcss
+  ✓ checkpoint: node_modules/ directory exists.
+
+Step 6 — Write and verify every frontend stack file:
+  - vite.config.js with laravel-vite-plugin, @vitejs/plugin-vue, resources/js/app.js, and @ alias
+  - tailwind.config.js with Blade, JS, and Vue content paths plus @tailwindcss/forms
+  - postcss.config.js with tailwindcss and autoprefixer
+  - resources/css/app.css with Tailwind base, components, and utilities
+  - resources/views/app.blade.php as the Inertia root with @vite, @inertiaHead, and @inertia
+  - resources/js/app.js using createInertiaApp and resolving ./Pages/\${name}.vue
+  Run list_files and do not continue until all six files exist.
+
+━━━ PHASE 3: FEATURE BUILD ━━━
+
+Step 7 — Build the feature: ${target}
+  7A — Route: read routes/web.php, add a named route using Inertia::render('PageName'), and ensure PageName matches the Vue file.
+  7B — Vue page: create resources/js/Pages/[PageName].vue with real content and Tailwind classes.
+    It MUST contain <script setup> and, in order:
+    1. <nav> with logo and links
+    2. <main> with hero, features, products/categories, and CTA sections
+    3. <footer> with link columns and copyright
+    Include at least 3 feature cards and 4 product/category cards. Do not use lorem ipsum.
+  7C — Run list_files on resources/js/Pages/ and confirm the page exists.
+
+Step 8 — Build check.
+  Action: run_command → npm run build
+  If it fails, read the error, fix it, and re-run. Do not print the done summary until it exits with code 0.
+
+Only after Step 8 passes, print exactly:
+"✓ Scaffolded [feature name]: [N] files created, ready at [route path]."
+Then list every file created or edited, one per line, as "  + path/to/file".`,
+  },
+
+  feature: {
+    needsArgument: true,
+    description: 'build a complete Laravel + Vue 3 feature: migration, model, controller, routes, and all dynamic Inertia pages',
+    instruction: (target) => `Run the @feature agent for: ${target}
+
+You are building one complete vertical feature slice end-to-end. Every layer must be consistent with every other layer. Do not finish until all checkpoints pass.
+
+━━━ PRE-FLIGHT ━━━
+Step 0 — Read the project before touching anything.
+  Confirm artisan and composer.json; read composer.json, routes/web.php, app/Models/, resources/js/Pages/, and any existing model or migration for this feature.
+
+━━━ PHASE 1: DATA LAYER ━━━
+Step 1 — Define and print both contracts before writing files:
+  MODEL CONTRACT: model, table, columns/types, $fillable, $casts, relationships, soft deletes.
+  INERTIA PROP CONTRACT: exact props passed by index(), show(), create(), and edit().
+
+Step 2 — Generate and complete the migration with php artisan make:migration create_[table]_table.
+  Use decimal(10, 2) for money, constrained foreign IDs, indexes for queried columns, nullable optional columns, optional softDeletes(), timestamps(), and Schema::dropIfExists().
+
+Step 3 — Generate and complete the model with php artisan make:model [Model].
+  Add $fillable, $casts, relationships, optional SoftDeletes, and required local scopes.
+
+Step 4 — Generate Store[Model]Request and Update[Model]Request.
+  Implement authorize() and rules() for every fillable field. Update rules must support partial updates with sometimes.
+
+Step 5 — Generate [Model]Resource and implement toArray() with only required fields, formatted money, whenLoaded() relationships, id, and created_at.
+
+Step 6 — Run php artisan migrate. Fix failures and re-run until it exits 0.
+
+━━━ PHASE 2: CONTROLLER ━━━
+Step 7 — Generate [Model]Controller --resource --model=[Model] and implement all 7 methods.
+  Follow the INERTIA PROP CONTRACT exactly. Use Store[Model]Request and Update[Model]Request, $request->validated(), eager loading, pagination, resources, and named-route redirects. Never use $request->all().
+
+━━━ PHASE 3: ROUTES ━━━
+Step 8 — Read routes/web.php, register Route::resource with appropriate middleware, then run php artisan route:list --name=[model] and confirm all 7 resource routes.
+
+━━━ PHASE 4: VUE PAGES ━━━
+Before writing each Vue file, re-read the INERTIA PROP CONTRACT. Every defineProps() key must exactly match its controller response.
+
+Step 9 — Create Index.vue with:
+  // CONTRACT: { items: LengthAwarePaginator<[Model]>, filters: { search } }
+  Search, New button, flash message, item table/card grid, Edit/Delete controls, pagination using items.links, and empty state.
+
+Step 10 — Create Create.vue with useForm(), one styled input and error per fillable field, processing state, submit, and cancel.
+
+Step 11 — Create Edit.vue with the same fields pre-populated from item and form.patch().
+
+Step 12 — Create Show.vue with:
+  // CONTRACT: { item: [Model] }
+  A detail card plus Edit, Back, and confirmed Delete controls.
+
+Step 13 — Run list_files on resources/js/Pages/[Model]/.
+  Required: Index.vue, Create.vue, Edit.vue, Show.vue. Create any missing page before continuing.
+
+━━━ PHASE 5: VERIFY ━━━
+Step 14 — Run npm run build. Fix failures and re-run until it exits 0.
+Step 15 — Run php artisan route:list --name=[model], confirm all 7 routes, and verify every Vue defineProps key and form route against the controller and route list.
+
+Only after Steps 14 and 15 pass, print exactly:
+"✓ Feature [[Model]]: [N] files created, routes registered, build passing."
+Then list every file, one per line: "  + path/to/file  [what it does]"`,
+  },
+
   component: {
     needsArgument: true,
     description: 'create or refactor a Vue 3 component following Composition API best practices',
@@ -247,6 +390,8 @@ export const AGENT_COMMANDS = [
   ['@commit', 'prepare a conventional commit with Laravel-aware scopes'],
   ['@migrate', 'create or audit a Laravel migration'],
   ['@artisan', 'scaffold Laravel files with the correct artisan commands'],
+  ['@scaffold', 'create a fresh Laravel + Vue 3 + Inertia + Tailwind project and build the requested feature'],
+  ['@feature', 'build a complete feature: migration, model, controller, routes, and all dynamic Inertia pages'],
   ['@component', 'create or refactor a Vue 3 Composition API component'],
 ];
 
@@ -266,6 +411,6 @@ export function routeAgentInput(input) {
   return {
     matched: true,
     announcement: `◆ @${name} dispatched — ${agent.description}`,
-    input: `${agent.instruction(argument)}\n\n${SHARED_RULES}`,
+    input: `${agent.instruction(argument)}\n\n${CONTRACT_RULES}\n\n${SHARED_RULES}`,
   };
 }

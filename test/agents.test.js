@@ -11,6 +11,8 @@ const CASES = [
   ['commit', '', /git diff --cached/],
   ['migrate', 'Product', /Migration \[filename\]: N columns/],
   ['artisan', 'Product resource', /Scaffolded: \[list of files created\]/],
+  ['scaffold', 'a Laravel ecommerce landing page', /composer create-project laravel\/laravel \./],
+  ['feature', 'Product catalog', /complete vertical feature slice end-to-end/],
   ['component', 'ProductCard.vue', /Component \[name\]: \[created\|refactored\]/],
 ];
 
@@ -34,7 +36,7 @@ test('agent names are case-insensitive and arguments are preserved', () => {
 });
 
 test('agents requiring a target return an error when it is missing', () => {
-  for (const name of ['simplify', 'review', 'hunt', 'fix', 'test', 'migrate', 'artisan', 'component']) {
+  for (const name of ['simplify', 'review', 'hunt', 'fix', 'test', 'migrate', 'artisan', 'scaffold', 'feature', 'component']) {
     const result = routeAgentInput(`@${name}`);
     assert.equal(result.matched, true);
     assert.match(result.error, new RegExp(`@${name} requires`, 'i'));
@@ -66,9 +68,42 @@ test('agent command catalog lists every available agent for the @ menu', () => {
     '@commit',
     '@migrate',
     '@artisan',
+    '@scaffold',
+    '@feature',
     '@component',
   ]);
   assert.equal(AGENT_COMMANDS.every(([, description]) => description.length > 0), true);
+});
+
+test('@scaffold verifies installation, builds a real feature, and verifies the build', () => {
+  const input = routeAgentInput('@scaffold a fresh Laravel ecommerce landing page').input;
+  assert.match(input, /Step 1 — Check if Laravel is already installed/);
+  assert.match(input, /php artisan --version/);
+  assert.match(input, /composer require inertiajs\/inertia-laravel/);
+  assert.match(input, /php artisan inertia:middleware/);
+  assert.match(input, /resources\/js\/Pages\/\[PageName\]\.vue/);
+  assert.match(input, /nav.*hero.*features.*CTA.*footer/is);
+  assert.match(input, /npm run build/);
+  assert.match(input, /✓ Scaffolded \[feature name\]: \[N\] files created, ready at \[route path\]\./);
+});
+
+test('agents that cross Laravel and Vue receive shared data-contract rules', () => {
+  const input = routeAgentInput('@feature Product catalog').input;
+  assert.match(input, /Data contract rules/);
+  assert.match(input, /Before writing a controller method, decide the exact prop shape/i);
+  assert.match(input, /CONTRACT: \{ products: LengthAwarePaginator<Product>/);
+  assert.match(input, /defineProps\(\{ products: Object \}\)/);
+});
+
+test('@feature defines and verifies the complete vertical slice', () => {
+  const input = routeAgentInput('@feature Product catalog').input;
+  assert.match(input, /MODEL CONTRACT/);
+  assert.match(input, /INERTIA PROP CONTRACT/);
+  assert.match(input, /Store\[Model\]Request/);
+  assert.match(input, /Route::resource/);
+  assert.match(input, /Index\.vue, Create\.vue, Edit\.vue, Show\.vue/);
+  assert.match(input, /php artisan route:list --name=\[model\]/);
+  assert.match(input, /npm run build/);
 });
 
 test('shared rules carry PHP and Laravel conventions', () => {

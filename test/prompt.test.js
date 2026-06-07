@@ -51,8 +51,42 @@ test('systemPrompt requires evidence before assuming project state or framework'
   assert.match(p, /Never claim.*already present.*without tool evidence/i);
 });
 
-test('systemPrompt does not silently pin framework versions for fresh projects', () => {
-  assert.match(systemPrompt('.'), /fresh project.*do not pin.*version.*unless the user/i);
+test('systemPrompt gates fresh project scaffolding and verifies installation', () => {
+  const p = systemPrompt('.');
+  assert.match(p, /create a fresh \[framework\] project.*STOP before any file edits/i);
+  assert.match(p, /composer\.json.*artisan.*project is not installed/i);
+  assert.match(p, /composer create-project laravel\/laravel \./i);
+  assert.match(p, /php artisan --version/i);
+  assert.match(p, /Never edit framework files.*as a substitute for actual installation/i);
+  assert.match(p, /Do not pin a framework version unless the user/i);
+  assert.match(p, /fresh \[framework\] project.*@scaffold/i);
+});
+
+test('systemPrompt defines minimum completion scope for named features', () => {
+  const p = systemPrompt('.');
+  assert.match(p, /A task is NOT complete until every named deliverable physically exists on disk/i);
+  assert.match(p, /landing page.*route in web\.php.*Vue page file.*navbar\/hero\/features\/CTA\/footer.*Tailwind styling/i);
+  assert.match(p, /auth.*routes.*controller.*Blade or Vue views.*middleware wired up/i);
+  assert.match(p, /dashboard.*protected route.*controller returning data.*Vue page rendering it/i);
+  assert.match(p, /CRUD.*migration.*model.*FormRequest.*controller with all 5 methods.*resource routes.*Vue pages/i);
+  assert.match(p, /Still needed: \[what\].*continue/i);
+});
+
+test('systemPrompt requires explicit step execution and disk verification', () => {
+  const p = systemPrompt('.');
+  assert.match(p, /explicit, numbered steps/i);
+  assert.match(p, /Each step has one action and one verification/i);
+  assert.match(p, /do NOT move to the next step until the current step is confirmed complete/i);
+  assert.match(p, /A file "exists" only after write_file or edit_file confirms it/i);
+});
+
+test('systemPrompt documents the canonical Laravel Vue Inertia structure', () => {
+  const p = systemPrompt('.');
+  assert.match(p, /Laravel \+ Vue 3 project structure \(canonical\)/);
+  assert.match(p, /resources\/js\/Pages\//);
+  assert.match(p, /HandleInertiaRequests/);
+  assert.match(p, /bootstrap\/app\.php/);
+  assert.match(p, /app\/Http\/Kernel\.php/);
 });
 
 test('systemPrompt carries the automatic agent-task gauge', () => {
@@ -76,8 +110,8 @@ test('systemPrompt carries the built-in knowledge snippets', () => {
   assert.match(p, /parameterized bindings/i);
 });
 
-test('systemPrompt stays within the specialized prompt budget', () => {
-  assert.ok(systemPrompt('.').split(/\s+/).length < 4000);
+test('systemPrompt stays within the expanded specialized prompt budget', () => {
+  assert.ok(systemPrompt('.').split(/\s+/).length < 5000);
 });
 
 test('systemPrompt carries permission-mode instructions by default', () => {
