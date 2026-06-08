@@ -12,6 +12,7 @@ import { modeLabel } from './modes.js';
 import { formatDiff } from './diff.js';
 import { createMemoryStore, learnExplicitPreferences } from './memory.js';
 import { loadInstructions, formatInstructionContext } from './instructions.js';
+import { activateSkills, discoverSkills, formatSkillCatalog } from './skills.js';
 import {
   createSpinner,
   CodeHighlighter,
@@ -463,8 +464,10 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
   const cwd = process.cwd();
   const memoryStore = createMemoryStore({ cwd });
   const instructions = formatInstructionContext(loadInstructions({ cwd }), { cwd });
+  const skills = discoverSkills({ cwd });
   const currentContext = () => ({
     instructions,
+    skillCatalog: formatSkillCatalog(skills),
     memories: memoryStore.isEnabled()
       ? memoryStore.list().map(({ scope, text }) => `- [${scope}] ${text}`).join('\n')
       : '',
@@ -655,6 +658,18 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
     }
 
     const learningInput = input;
+    const activation = activateSkills(input, skills);
+    if (activation.error) {
+      console.log(red(activation.error));
+      continue;
+    }
+    input = activation.input;
+    if (activation.selected.length) {
+      const skillInstructions = activation.selected
+        .map((skill) => `## Active skill: $${skill.name}\n${skill.body}`)
+        .join('\n\n');
+      input = `${skillInstructions}\n\n## User task\n${input}`;
+    }
     const agentInput = prepareAgentInput(input);
     if (agentInput.error) {
       console.log(red(agentInput.error));

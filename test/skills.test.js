@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { discoverSkills, formatSkillCatalog } from '../src/skills.js';
+import { activateSkills, discoverSkills, formatSkillCatalog } from '../src/skills.js';
 
 function fixture() {
   const base = fs.mkdtempSync(path.join(os.tmpdir(), 'aurora-skills-'));
@@ -60,4 +60,31 @@ test('formatSkillCatalog includes metadata without full skill bodies and respect
   assert.match(catalog, /\$review.*Review changes/);
   assert.doesNotMatch(catalog, /SECRET FULL BODY|ANOTHER BODY/);
   assert.ok(catalog.length <= 80);
+});
+
+test('activateSkills explicitly loads a named skill and removes the invocation marker', () => {
+  const skills = [{ name: 'pest-testing', description: 'Add Laravel Pest tests', implicit: false, body: 'Use Pest.' }];
+
+  assert.deepEqual(activateSkills('$pest-testing add coverage for orders', skills), {
+    input: 'add coverage for orders',
+    selected: [skills[0]],
+  });
+});
+
+test('activateSkills conservatively selects implicit skills from description overlap', () => {
+  const review = { name: 'security-review', description: 'Review PHP code for security vulnerabilities', implicit: true, body: 'Review safely.' };
+  const docs = { name: 'write-docs', description: 'Write product documentation', implicit: true, body: 'Document.' };
+
+  assert.deepEqual(activateSkills('review this PHP controller for security vulnerabilities', [review, docs]).selected, [review]);
+  assert.deepEqual(activateSkills('fix this controller', [review, docs]).selected, []);
+});
+
+test('activateSkills bounds loaded content and reports unknown explicit skills', () => {
+  const large = { name: 'large', description: 'Large workflow', implicit: false, body: 'x'.repeat(1000) };
+  assert.equal(activateSkills('$large run it', [large], { maxChars: 100 }).selected[0].body.length, 100);
+  assert.deepEqual(activateSkills('$missing run it', [large]), {
+    input: '$missing run it',
+    selected: [],
+    error: 'Unknown skill: $missing',
+  });
 });

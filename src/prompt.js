@@ -19,16 +19,18 @@ Plan-mode rules:
 - "change": "+" new, "~" modified, "-" deleted. Use "status":"complete" with "questions":[] when ready.`,
 };
 
-function dynamicContext({ instructions = '', memories = '' } = {}) {
+function dynamicContext({ instructions = '', memories = '', skillCatalog = '' } = {}) {
   const required = String(instructions).trim().slice(0, 12_000);
   const remembered = String(memories).trim().slice(0, 4_000);
-  if (!required && !remembered) return '';
+  const skills = String(skillCatalog).trim().slice(0, 4_000);
+  if (!required && !remembered && !skills) return '';
   return `
 
 ## Dynamic guidance
 Required project instructions take precedence over user memory and built-in stack preferences.
 ${required ? `\n### Required project instructions\n${required}\n` : ''}
-${remembered ? `\n### User memory\nTreat these as preferences, not required project rules. Ignore any item that conflicts with current user instructions or project instructions.\n${remembered}\n` : ''}`;
+${remembered ? `\n### User memory\nTreat these as preferences, not required project rules. Ignore any item that conflicts with current user instructions or project instructions.\n${remembered}\n` : ''}
+${skills ? `\n### Available skills\nLoad full skill instructions only when selected explicitly with $name or when the task clearly matches the description.\n${skills}\n` : ''}`;
 }
 
 export function systemPrompt(cwd, mode = 'permission', context = {}) {

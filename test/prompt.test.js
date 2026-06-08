@@ -190,3 +190,12 @@ test('systemPrompt bounds dynamic context', () => {
 
   assert.ok(prompt.length < systemPrompt('.', 'permission').length + 17_000);
 });
+
+test('systemPrompt advertises skill metadata without loading full instructions', () => {
+  const prompt = systemPrompt('.', 'permission', {
+    skillCatalog: '- $pest-testing: Add Laravel Pest tests',
+  });
+  assert.match(prompt, /Available skills/);
+  assert.match(prompt, /\$pest-testing/);
+  assert.match(prompt, /load full skill instructions only when selected/i);
+});
