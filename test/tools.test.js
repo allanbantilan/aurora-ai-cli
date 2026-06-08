@@ -103,6 +103,56 @@ test('read_file returns numbered lines', () => {
   const out = readFile.execute({ path: 'src/app.js' }, dir);
   assert.match(out, /1\tconst x = 1;/);
   assert.match(out, /2\tconst y = 2;/);
+  assert.doesNotMatch(out, /Related files:/);
+});
+
+test('read_file returns an inclusive numbered line range', () => {
+  const dir = tmpProject();
+  fs.writeFileSync(path.join(dir, 'src', 'app.js'), 'one\ntwo\nthree\nfour');
+
+  assert.equal(readFile.execute({ path: 'src/app.js', start_line: 2, end_line: 3 }, dir), '2\ttwo\n3\tthree');
+});
+
+test('read_file validates line ranges and reports ranges beyond the file', () => {
+  const dir = tmpProject();
+
+  assert.throws(
+    () => readFile.execute({ path: 'src/app.js', start_line: 0 }, dir),
+    /positive integers/
+  );
+  assert.throws(
+    () => readFile.execute({ path: 'src/app.js', start_line: 3, end_line: 2 }, dir),
+    /start_line.*end_line/
+  );
+  assert.equal(
+    readFile.execute({ path: 'src/app.js', start_line: 20, end_line: 30 }, dir),
+    '(requested range 20-30 is beyond the 3-line file)'
+  );
+});
+
+test('read_file suggests existing related files for Laravel models', () => {
+  const dir = tmpLaravelProject();
+  const files = {
+    'app/Models/Product.php': '<?php\nclass Product {}',
+    'database/migrations/2026_01_01_000000_create_products_table.php': '<?php',
+    'database/factories/ProductFactory.php': '<?php',
+    'app/Policies/ProductPolicy.php': '<?php',
+    'app/Http/Resources/ProductResource.php': '<?php',
+    'tests/Feature/ProductTest.php': '<?php',
+  };
+  for (const [rel, content] of Object.entries(files)) {
+    fs.mkdirSync(path.dirname(path.join(dir, rel)), { recursive: true });
+    fs.writeFileSync(path.join(dir, rel), content);
+  }
+
+  const out = readFile.execute({ path: 'app/Models/Product.php' }, dir);
+
+  assert.match(out, /Related files:/);
+  assert.match(out, /database\/migrations\/2026_01_01_000000_create_products_table\.php/);
+  assert.match(out, /database\/factories\/ProductFactory\.php/);
+  assert.match(out, /app\/Policies\/ProductPolicy\.php/);
+  assert.match(out, /app\/Http\/Resources\/ProductResource\.php/);
+  assert.match(out, /tests\/Feature\/ProductTest\.php/);
 });
 
 test('read_file rejects path escape', () => {
