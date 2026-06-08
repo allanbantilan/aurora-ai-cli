@@ -9,6 +9,9 @@ import * as grep from '../src/tools/grep.js';
 import * as writeFile from '../src/tools/write-file.js';
 import * as editFile from '../src/tools/edit-file.js';
 import * as runCommand from '../src/tools/run-command.js';
+import * as inspectProjectTool from '../src/tools/inspect-project.js';
+import { inspectProject } from '../src/project-inspection.js';
+import { definitions } from '../src/tools/index.js';
 
 function tmpProject() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jai-tools-'));
@@ -17,6 +20,83 @@ function tmpProject() {
   fs.writeFileSync(path.join(dir, 'readme.md'), 'hello world\n');
   return dir;
 }
+
+function tmpLaravelProject() {
+  const dir = tmpProject();
+  fs.writeFileSync(path.join(dir, 'composer.json'), JSON.stringify({
+    require: {
+      php: '^8.3',
+      'laravel/framework': '^12.0',
+      'inertiajs/inertia-laravel': '^2.0',
+    },
+    'require-dev': {
+      'pestphp/pest': '^3.0',
+    },
+  }));
+  fs.writeFileSync(path.join(dir, 'package.json'), JSON.stringify({
+    dependencies: {
+      vue: '^3.5.0',
+      '@inertiajs/vue3': '^2.0.0',
+      pinia: '^3.0.0',
+    },
+    devDependencies: {
+      vite: '^7.0.0',
+    },
+  }));
+  for (const rel of ['routes', 'app/Models', 'app/Http/Controllers', 'database/migrations', 'resources/js/Pages']) {
+    fs.mkdirSync(path.join(dir, rel), { recursive: true });
+  }
+  return dir;
+}
+
+test('inspectProject detects Laravel and related stack metadata', () => {
+  const project = inspectProject(tmpLaravelProject());
+
+  assert.equal(project.isLaravel, true);
+  assert.equal(project.php, '^8.3');
+  assert.equal(project.laravel, '^12.0');
+  assert.equal(project.vue, '^3.5.0');
+  assert.equal(project.inertia, '^2.0.0');
+  assert.equal(project.pinia, '^3.0.0');
+  assert.equal(project.vite, '^7.0.0');
+  assert.equal(project.pest, '^3.0');
+  assert.deepEqual(project.areas, [
+    'routes',
+    'app/Models',
+    'app/Http/Controllers',
+    'database/migrations',
+    'resources/js/Pages',
+  ]);
+});
+
+test('inspectProject treats missing and malformed package metadata as generic', () => {
+  const missing = inspectProject(tmpProject());
+  assert.equal(missing.isLaravel, false);
+
+  const malformedDir = tmpProject();
+  fs.writeFileSync(path.join(malformedDir, 'composer.json'), '{bad');
+  fs.writeFileSync(path.join(malformedDir, 'package.json'), '{bad');
+  const malformed = inspectProject(malformedDir);
+  assert.equal(malformed.isLaravel, false);
+  assert.equal(malformed.vue, undefined);
+});
+
+test('inspect_project summarizes confirmed Laravel stack and areas', () => {
+  const out = inspectProjectTool.execute({}, tmpLaravelProject());
+
+  assert.match(out, /Project type: Laravel/);
+  assert.match(out, /Laravel: \^12\.0/);
+  assert.match(out, /Vue: \^3\.5\.0/);
+  assert.match(out, /Existing areas:.*routes.*resources\/js\/Pages/s);
+});
+
+test('inspect_project clearly reports generic projects', () => {
+  assert.match(inspectProjectTool.execute({}, tmpProject()), /Project type: Generic/);
+});
+
+test('inspect_project is registered as a tool', () => {
+  assert.ok(definitions.some((tool) => tool.function.name === 'inspect_project'));
+});
 
 test('read_file returns numbered lines', () => {
   const dir = tmpProject();
