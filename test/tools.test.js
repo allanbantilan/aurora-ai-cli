@@ -170,6 +170,42 @@ test('list_files reports no matches', () => {
   assert.equal(listFiles.execute({ pattern: '**/*.py' }, dir), '(no matches)');
 });
 
+test('list_files returns canonical Laravel and Vue categories', () => {
+  const dir = tmpLaravelProject();
+  const files = [
+    'app/Models/Product.php',
+    'app/Http/Controllers/ProductController.php',
+    'resources/js/Pages/Products/Index.vue',
+    'resources/js/Components/ProductCard.vue',
+    'resources/js/composables/useProducts.js',
+    'resources/views/products/index.blade.php',
+  ];
+  for (const rel of files) {
+    fs.mkdirSync(path.dirname(path.join(dir, rel)), { recursive: true });
+    fs.writeFileSync(path.join(dir, rel), '');
+  }
+
+  assert.equal(listFiles.execute({ category: 'models' }, dir), 'app/Models/Product.php');
+  assert.equal(listFiles.execute({ category: 'vue-pages' }, dir), 'resources/js/Pages/Products/Index.vue');
+  assert.match(listFiles.execute({ category: 'php' }, dir), /app\/Models\/Product\.php/);
+  assert.match(listFiles.execute({ category: 'vue' }, dir), /resources\/js\/Components\/ProductCard\.vue/);
+});
+
+test('list_files combines a Laravel category with a caller glob', () => {
+  const dir = tmpLaravelProject();
+  for (const rel of ['app/Models/Product.php', 'app/Models/User.php']) {
+    fs.writeFileSync(path.join(dir, rel), '');
+  }
+
+  assert.equal(listFiles.execute({ category: 'models', pattern: '**/Product.php' }, dir), 'app/Models/Product.php');
+});
+
+test('list_files rejects unknown categories and Laravel categories in generic projects', () => {
+  const laravel = tmpLaravelProject();
+  assert.throws(() => listFiles.execute({ category: 'services' }, laravel), /Unknown file category/);
+  assert.throws(() => listFiles.execute({ category: 'models' }, tmpProject()), /requires a detected Laravel project/);
+});
+
 test('grep finds matching lines with locations', () => {
   const dir = tmpProject();
   const out = grep.execute({ pattern: 'const y' }, dir);
