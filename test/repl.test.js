@@ -579,6 +579,23 @@ test('toolActivityLabel never includes raw JSON braces', () => {
   }
 });
 
+test('mode changes preserve project instructions and user memory', () => {
+  const context = { instructions: 'required root rule', memories: 'preferred test style' };
+  const switched = applyModeSelection({
+    selectedMode: 'auto',
+    messages: [{ role: 'system', content: 'old' }],
+    cwd: 'C:\\project',
+    context,
+  });
+  assert.match(switched.messages[0].content, /required root rule/);
+  assert.match(switched.messages[0].content, /preferred test style/);
+
+  const planning = beginPlanTurn({ mode: 'auto', messages: switched.messages, cwd: 'C:\\project', feature: 'x', context });
+  assert.match(planning.messages[0].content, /required root rule/);
+  const restored = endPlanTurn({ previousMode: 'auto', messages: planning.messages, cwd: 'C:\\project', context });
+  assert.match(restored.messages[0].content, /preferred test style/);
+});
+
 test('commandProgressLabel shows the latest installer progress line', () => {
   assert.equal(commandProgressLabel('Downloading 10%\rDownloading 20%\r'), 'running... Downloading 20%');
 });

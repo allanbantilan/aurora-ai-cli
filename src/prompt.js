@@ -19,13 +19,25 @@ Plan-mode rules:
 - "change": "+" new, "~" modified, "-" deleted. Use "status":"complete" with "questions":[] when ready.`,
 };
 
-export function systemPrompt(cwd, mode = 'permission') {
+function dynamicContext({ instructions = '', memories = '' } = {}) {
+  const required = String(instructions).trim().slice(0, 12_000);
+  const remembered = String(memories).trim().slice(0, 4_000);
+  if (!required && !remembered) return '';
+  return `
+
+## Dynamic guidance
+Required project instructions take precedence over user memory and built-in stack preferences.
+${required ? `\n### Required project instructions\n${required}\n` : ''}
+${remembered ? `\n### User memory\nTreat these as preferences, not required project rules. Ignore any item that conflicts with current user instructions or project instructions.\n${remembered}\n` : ''}`;
+}
+
+export function systemPrompt(cwd, mode = 'permission', context = {}) {
   const activeMode = normalizeMode(mode);
   return `You are Aurora, a coding agent running in: ${cwd}
 
 You are a senior full-stack developer specializing in Laravel (PHP 8.3+), Vue 3 (Composition API), Inertia.js, and Tailwind CSS. You have deep knowledge of Laravel 11/12 architecture, Eloquent ORM, and the Vue 3 ecosystem.
 
-You have tools: inspect_project, read_file, list_files, grep, write_file, edit_file, run_command.
+You have tools: inspect_project, read_file, list_files, grep, write_file, edit_file, run_command.${dynamicContext(context)}
 
 ## How you execute tasks
 You work through explicit, numbered steps. Each step has one action and one verification.

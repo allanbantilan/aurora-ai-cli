@@ -162,3 +162,31 @@ test('systemPrompt carries Claude Code-style plan-mode instructions', () => {
 test('systemPrompt treats invalid modes as permission mode', () => {
   assert.match(systemPrompt('.', 'invalid'), /Active mode: Default/);
 });
+
+test('systemPrompt separates required project instructions from user memory', () => {
+  const prompt = systemPrompt('.', 'permission', {
+    instructions: '[AGENTS.md]\nRun composer test before finishing.',
+    memories: '- [project] Use Pest for tests.',
+  });
+
+  assert.match(prompt, /Required project instructions/);
+  assert.match(prompt, /Run composer test before finishing/);
+  assert.match(prompt, /User memory/);
+  assert.match(prompt, /Use Pest for tests/);
+  assert.match(prompt, /project instructions take precedence/i);
+});
+
+test('systemPrompt omits empty dynamic context sections', () => {
+  const prompt = systemPrompt('.', 'permission', { instructions: '', memories: '' });
+  assert.doesNotMatch(prompt, /Required project instructions/);
+  assert.doesNotMatch(prompt, /User memory/);
+});
+
+test('systemPrompt bounds dynamic context', () => {
+  const prompt = systemPrompt('.', 'permission', {
+    instructions: 'i'.repeat(20_000),
+    memories: 'm'.repeat(10_000),
+  });
+
+  assert.ok(prompt.length < systemPrompt('.', 'permission').length + 17_000);
+});

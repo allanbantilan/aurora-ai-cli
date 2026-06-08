@@ -11,6 +11,7 @@ import { fetchModelStatus } from './client.js';
 import { modeLabel } from './modes.js';
 import { formatDiff } from './diff.js';
 import { createMemoryStore } from './memory.js';
+import { loadInstructions, formatInstructionContext } from './instructions.js';
 import {
   createSpinner,
   CodeHighlighter,
@@ -85,28 +86,28 @@ export function autoConfirmationOptions() {
   ];
 }
 
-export function applyModeSelection({ selectedMode, mode = 'permission', messages, cwd, input = '' }) {
+export function applyModeSelection({ selectedMode, mode = 'permission', messages, cwd, input = '', context = {} }) {
   if (!selectedMode) return { mode, input, messages };
   return {
     mode: selectedMode,
     input,
-    messages: [{ role: 'system', content: systemPrompt(cwd, selectedMode) }, ...messages.slice(1)],
+    messages: [{ role: 'system', content: systemPrompt(cwd, selectedMode, context) }, ...messages.slice(1)],
   };
 }
 
-export function beginPlanTurn({ mode, messages, cwd, feature }) {
+export function beginPlanTurn({ mode, messages, cwd, feature, context = {} }) {
   return {
     previousMode: mode,
     mode: 'plan',
     input: `Plan this feature without implementing it: ${feature}`,
-    messages: [{ role: 'system', content: systemPrompt(cwd, 'plan') }, ...messages.slice(1)],
+    messages: [{ role: 'system', content: systemPrompt(cwd, 'plan', context) }, ...messages.slice(1)],
   };
 }
 
-export function endPlanTurn({ previousMode, messages, cwd }) {
+export function endPlanTurn({ previousMode, messages, cwd, context = {} }) {
   return {
     mode: previousMode,
-    messages: [{ role: 'system', content: systemPrompt(cwd, previousMode) }, ...messages.slice(1)],
+    messages: [{ role: 'system', content: systemPrompt(cwd, previousMode, context) }, ...messages.slice(1)],
   };
 }
 
@@ -121,8 +122,8 @@ export function planCompletionOptions() {
   ];
 }
 
-export function completePlanTurn({ choice, previousMode, messages, cwd }) {
-  const restored = endPlanTurn({ previousMode, messages, cwd });
+export function completePlanTurn({ choice, previousMode, messages, cwd, context = {} }) {
+  const restored = endPlanTurn({ previousMode, messages, cwd, context });
   return {
     ...restored,
     input: choice === 'proceed' ? 'Implement the approved plan above.' : '',
@@ -459,8 +460,16 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
     saveModels(chain);
   }
 
-  let messages = [{ role: 'system', content: systemPrompt(process.cwd(), mode) }];
-  const memoryStore = createMemoryStore({ cwd: process.cwd() });
+  const cwd = process.cwd();
+  const memoryStore = createMemoryStore({ cwd });
+  const instructions = formatInstructionContext(loadInstructions({ cwd }), { cwd });
+  const currentContext = () => ({
+    instructions,
+    memories: memoryStore.isEnabled()
+      ? memoryStore.list().map(({ scope, text }) => `- [${scope}] ${text}`).join('\n')
+      : '',
+  });
+  let messages = [{ role: 'system', content: systemPrompt(cwd, mode, currentContext()) }];
 
   const permissions = createPermissions(async (toolName, args) => {
     spinner.stop();
@@ -607,6 +616,7 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
     const memoryCommand = parseMemoryCommand(input);
     if (memoryCommand) {
       console.log(executeMemoryCommand(memoryCommand, memoryStore));
+      messages[0] = { role: 'system', content: systemPrompt(cwd, mode, currentContext()) };
       continue;
     }
     if (input === '/model') {
@@ -620,7 +630,7 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
     }
     if (input === '/permission') {
       const selectedMode = await pickPermissionMode(mode);
-      const switched = applyModeSelection({ selectedMode, mode, messages, cwd: process.cwd() });
+      const switched = applyModeSelection({ selectedMode, mode, messages, cwd, context: currentContext() });
       const changed = switched.mode !== mode;
       mode = switched.mode;
       messages = switched.messages;
@@ -633,7 +643,7 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
         console.log(dim('plan cancelled'));
         continue;
       }
-      const planning = beginPlanTurn({ mode, messages, cwd: process.cwd(), feature });
+      const planning = beginPlanTurn({ mode, messages, cwd, feature, context: currentContext() });
       previousModeAfterTurn = planning.previousMode;
       mode = planning.mode;
       messages = planning.messages;
@@ -844,7 +854,8 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
             choice,
             previousMode: previousModeAfterTurn,
             messages,
-            cwd: process.cwd(),
+            cwd,
+            context: currentContext(),
           });
           mode = completed.mode;
           messages = completed.messages;
@@ -862,7 +873,7 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
     } finally {
       spinner.stop();
       if (previousModeAfterTurn) {
-        const restored = endPlanTurn({ previousMode: previousModeAfterTurn, messages, cwd: process.cwd() });
+        const restored = endPlanTurn({ previousMode: previousModeAfterTurn, messages, cwd, context: currentContext() });
         mode = restored.mode;
         messages = restored.messages;
       }
