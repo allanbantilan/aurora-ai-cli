@@ -10,6 +10,7 @@ import { AGENT_COMMANDS, routeAgentInput } from './agents.js';
 import { fetchModelStatus } from './client.js';
 import { modeLabel } from './modes.js';
 import { formatDiff } from './diff.js';
+import { createMemoryStore } from './memory.js';
 import {
   createSpinner,
   CodeHighlighter,
@@ -35,6 +36,9 @@ const COMMANDS = [
   ['/model', 'select models (order = fallback priority)'],
   ['/permission', 'select Default or Auto mode'],
   ['/plan', 'plan a feature without implementing it'],
+  ['/memory', 'list memory or turn it on/off'],
+  ['/remember', 'remember a project preference'],
+  ['/forget', 'forget a project preference'],
   ['/clear', 'reset conversation'],
   ['/help', 'show this help'],
   ['/exit', 'quit'],
@@ -334,6 +338,45 @@ export function commandList() {
   return COMMANDS.map(([c, d]) => `${c.padEnd(width)} ${d}`).join('\n');
 }
 
+export function parseMemoryCommand(input) {
+  const match = input.match(/^\/(memory|remember|forget)(?:\s+(.*))?$/i);
+  if (!match) return null;
+  const command = match[1].toLowerCase();
+  const argument = (match[2] ?? '').trim();
+  if (command === 'memory') {
+    if (/^(?:on|off)$/i.test(argument)) return { action: 'toggle', enabled: argument.toLowerCase() === 'on' };
+    return { action: 'list' };
+  }
+  const scoped = argument.match(/^(global)\s+(.+)$/i);
+  return {
+    action: command === 'remember' ? 'add' : 'remove',
+    scope: scoped ? 'global' : 'project',
+    text: scoped ? scoped[2].trim() : argument,
+  };
+}
+
+export function executeMemoryCommand(command, store) {
+  if (command.action === 'list') {
+    const entries = store.list();
+    const state = store.isEnabled() ? 'enabled' : 'disabled';
+    return entries.length
+      ? `Memory is ${state}.\n${entries.map(({ scope, text }) => `- [${scope}] ${text}`).join('\n')}`
+      : `Memory is ${state}. No saved preferences.`;
+  }
+  if (command.action === 'toggle') {
+    store.setEnabled(command.enabled);
+    return `Memory ${command.enabled ? 'enabled' : 'disabled'}.`;
+  }
+  if (!command.text) return `Usage: /${command.action === 'add' ? 'remember' : 'forget'} [global] <preference>`;
+  if (command.action === 'add') {
+    const result = store.add(command.text, command.scope);
+    return result.added ? `Remembered [${command.scope}]: ${command.text}` : `Not remembered: ${result.reason}.`;
+  }
+  return store.remove(command.text, command.scope)
+    ? `Forgot [${command.scope}]: ${command.text}`
+    : `No matching [${command.scope}] memory found.`;
+}
+
 export async function startRepl({ client, models, initialChain, saveModels }) {
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout, completer: completeCommand });
   let mode = 'permission';
@@ -417,6 +460,7 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
   }
 
   let messages = [{ role: 'system', content: systemPrompt(process.cwd(), mode) }];
+  const memoryStore = createMemoryStore({ cwd: process.cwd() });
 
   const permissions = createPermissions(async (toolName, args) => {
     spinner.stop();
@@ -558,6 +602,11 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
     if (input === '/clear') {
       messages = [messages[0]];
       console.log('(conversation cleared)');
+      continue;
+    }
+    const memoryCommand = parseMemoryCommand(input);
+    if (memoryCommand) {
+      console.log(executeMemoryCommand(memoryCommand, memoryStore));
       continue;
     }
     if (input === '/model') {

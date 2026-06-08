@@ -41,6 +41,8 @@ import {
   inputMenuPrefix,
   shouldConfirmAuto,
   ENVIRONMENT_CONTINUATION_RETRY_PROMPT,
+  parseMemoryCommand,
+  executeMemoryCommand,
 } from '../src/repl.js';
 
 test('createEchoSuppressor drops an exact first-line echo of the user input', () => {
@@ -129,7 +131,7 @@ test('completeCommand completes a unique prefix', () => {
 
 test('completeCommand lists all commands for bare slash', () => {
   const [hits] = completeCommand('/');
-  assert.deepEqual(hits, ['/model', '/permission', '/plan', '/clear', '/help', '/exit']);
+  assert.deepEqual(hits, ['/model', '/permission', '/plan', '/memory', '/remember', '/forget', '/clear', '/help', '/exit']);
 });
 
 test('completeCommand returns no hits for non-command input', () => {
@@ -220,7 +222,51 @@ test('inputMenuPrefix detects bare slash and @ triggers only', () => {
 
 test('commandList includes every command with a description', () => {
   const text = commandList();
-  for (const c of ['/model', '/permission', '/plan', '/clear', '/help', '/exit']) assert.match(text, new RegExp(c.replace('/', '\\/')));
+  for (const c of ['/model', '/permission', '/plan', '/memory', '/remember', '/forget', '/clear', '/help', '/exit']) assert.match(text, new RegExp(c.replace('/', '\\/')));
+});
+
+test('parseMemoryCommand recognizes memory controls and scoped values', () => {
+  assert.deepEqual(parseMemoryCommand('/memory'), { action: 'list' });
+  assert.deepEqual(parseMemoryCommand('/memory off'), { action: 'toggle', enabled: false });
+  assert.deepEqual(parseMemoryCommand('/memory on'), { action: 'toggle', enabled: true });
+  assert.deepEqual(parseMemoryCommand('/remember Use Pest.'), { action: 'add', scope: 'project', text: 'Use Pest.' });
+  assert.deepEqual(parseMemoryCommand('/remember global Keep replies terse.'), {
+    action: 'add',
+    scope: 'global',
+    text: 'Keep replies terse.',
+  });
+  assert.deepEqual(parseMemoryCommand('/forget global Keep replies terse.'), {
+    action: 'remove',
+    scope: 'global',
+    text: 'Keep replies terse.',
+  });
+  assert.equal(parseMemoryCommand('/model'), null);
+});
+
+test('executeMemoryCommand lists, toggles, adds, and removes through the store', () => {
+  const values = [];
+  let enabled = true;
+  const store = {
+    list: () => values,
+    isEnabled: () => enabled,
+    setEnabled: (value) => { enabled = value; },
+    add: (text, scope) => {
+      values.push({ text, scope });
+      return { added: true };
+    },
+    remove: (text, scope) => {
+      const index = values.findIndex((value) => value.text === text && value.scope === scope);
+      if (index < 0) return false;
+      values.splice(index, 1);
+      return true;
+    },
+  };
+
+  assert.match(executeMemoryCommand({ action: 'list' }, store), /enabled/i);
+  assert.match(executeMemoryCommand({ action: 'add', scope: 'project', text: 'Use Pest.' }, store), /remembered/i);
+  assert.match(executeMemoryCommand({ action: 'list' }, store), /Use Pest/);
+  assert.match(executeMemoryCommand({ action: 'remove', scope: 'project', text: 'Use Pest.' }, store), /forgot/i);
+  assert.match(executeMemoryCommand({ action: 'toggle', enabled: false }, store), /disabled/i);
 });
 
 test('promoteModel puts the fallback first and drops the failed model', () => {
