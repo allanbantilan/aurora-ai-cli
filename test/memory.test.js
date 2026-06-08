@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { createMemoryStore } from '../src/memory.js';
+import { createMemoryStore, extractExplicitPreferences, learnExplicitPreferences } from '../src/memory.js';
 
 function fixture() {
   const baseDir = fs.mkdtempSync(path.join(os.tmpdir(), 'aurora-memory-'));
@@ -71,4 +71,28 @@ test('memory store isolates project preferences by working directory', () => {
 
   const other = createMemoryStore({ baseDir, cwd: `${cwd}-other` });
   assert.deepEqual(other.list(), []);
+});
+
+test('extractExplicitPreferences keeps explicit durable preferences', () => {
+  assert.deepEqual(
+    extractExplicitPreferences('Please always use Pest for tests. I prefer concise commit messages. Use pnpm instead of npm.'),
+    ['Please always use Pest for tests.', 'I prefer concise commit messages.', 'Use pnpm instead of npm.']
+  );
+});
+
+test('extractExplicitPreferences rejects transient instructions and secrets', () => {
+  assert.deepEqual(extractExplicitPreferences('For this task, use Pest instead of PHPUnit.'), []);
+  assert.deepEqual(extractExplicitPreferences('Always use this file for now.'), []);
+  assert.deepEqual(extractExplicitPreferences('Always use token=sk-secret-value.'), []);
+  assert.deepEqual(extractExplicitPreferences('Fix the failing test.'), []);
+});
+
+test('learnExplicitPreferences saves project preferences only when memory is enabled', () => {
+  const { store } = fixture();
+  assert.equal(learnExplicitPreferences('Always use Pest for tests.', store), 1);
+  assert.deepEqual(store.list(), [{ scope: 'project', text: 'Always use Pest for tests.' }]);
+
+  store.setEnabled(false);
+  assert.equal(learnExplicitPreferences('Prefer PHPUnit for tests.', store), 0);
+  assert.equal(store.list().length, 1);
 });

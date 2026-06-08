@@ -10,7 +10,7 @@ import { AGENT_COMMANDS, routeAgentInput } from './agents.js';
 import { fetchModelStatus } from './client.js';
 import { modeLabel } from './modes.js';
 import { formatDiff } from './diff.js';
-import { createMemoryStore } from './memory.js';
+import { createMemoryStore, learnExplicitPreferences } from './memory.js';
 import { loadInstructions, formatInstructionContext } from './instructions.js';
 import {
   createSpinner,
@@ -654,6 +654,7 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
       continue;
     }
 
+    const learningInput = input;
     const agentInput = prepareAgentInput(input);
     if (agentInput.error) {
       console.log(red(agentInput.error));
@@ -835,6 +836,9 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
               ...new Set(turnCommandFailures.flatMap(({ command, result }) => commandFailureGuidance(command, result))),
             ];
             console.log(`\n${renderDoneSummary(files, { errors: turnErrors, nextSteps })}`);
+          }
+          if (turnErrors === 0 && learnExplicitPreferences(learningInput, memoryStore)) {
+            messages[0] = { role: 'system', content: systemPrompt(cwd, mode, currentContext()) };
           }
           break;
         }

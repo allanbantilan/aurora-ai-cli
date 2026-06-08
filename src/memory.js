@@ -5,6 +5,8 @@ import crypto from 'node:crypto';
 
 const DEFAULT_BASE_DIR = path.join(os.homedir(), '.aurora', 'memory');
 const SECRET_RE = /(?:\b(?:api[_ -]?key|password|passwd|secret|token)\b\s*[:=]|\bsk-[a-z0-9_-]{8,})/i;
+const EXPLICIT_PREFERENCE_RE = /\b(?:always|never|prefer|preference is|use\b.+\binstead of|do not|don't)\b/i;
+const TRANSIENT_RE = /\b(?:this|that|current|today|now|once|temporarily|for this|for now|next time|in this task|in this file)\b/i;
 
 function normalize(text) {
   return String(text ?? '').trim().replace(/\s+/g, ' ');
@@ -35,6 +37,27 @@ function memoryFile(baseDir, cwd, scope) {
   return scope === 'global'
     ? path.join(baseDir, 'global.json')
     : path.join(baseDir, 'projects', `${projectId(cwd)}.json`);
+}
+
+export function extractExplicitPreferences(input) {
+  return (String(input).match(/[^.!?\n]+[.!?]?/g) ?? [])
+    .map((sentence) => normalize(sentence))
+    .filter((sentence) =>
+      sentence.length >= 8 &&
+      sentence.length <= 500 &&
+      EXPLICIT_PREFERENCE_RE.test(sentence) &&
+      !TRANSIENT_RE.test(sentence) &&
+      !SECRET_RE.test(sentence) &&
+      !/^never mind[.!]?$/i.test(sentence)
+    )
+    .slice(0, 3);
+}
+
+export function learnExplicitPreferences(input, store) {
+  if (!store.isEnabled()) return 0;
+  return extractExplicitPreferences(input)
+    .filter((preference) => store.add(preference, 'project').added)
+    .length;
 }
 
 function readMemories(file) {
