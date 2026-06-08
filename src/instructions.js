@@ -52,15 +52,17 @@ export function loadInstructions({ cwd = process.cwd(), home = os.homedir(), pro
 
 export function formatInstructionContext(entries, { cwd = process.cwd(), maxChars = 12_000 } = {}) {
   let output = '';
-  for (const entry of entries) {
+  for (const entry of [...entries].reverse()) {
     const label = path.relative(cwd, entry.file) || path.basename(entry.file);
-    const section = `${output ? '\n\n' : ''}[${label}]\n${entry.content}`;
-    if (output.length + section.length <= maxChars) {
-      output += section;
+    const section = `[${label}]\n${entry.content}`;
+    const separator = output ? '\n\n' : '';
+    const remaining = maxChars - output.length - separator.length;
+    if (remaining <= 0) break;
+    if (section.length <= remaining) {
+      output = `${section}${separator}${output}`;
       continue;
     }
-    const remaining = maxChars - output.length;
-    if (remaining > 0) output += section.slice(0, remaining);
+    output = `${section.slice(0, remaining)}${separator}${output}`;
     break;
   }
   return output;

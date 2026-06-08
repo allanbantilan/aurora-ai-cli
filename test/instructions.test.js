@@ -66,12 +66,13 @@ test('loadInstructions stays empty when no instruction files exist', () => {
 test('formatInstructionContext labels sources and applies a character budget', () => {
   const entries = [
     { file: '/project/AGENTS.md', content: 'root rule' },
-    { file: '/project/app/AGENTS.md', content: 'x'.repeat(200) },
+    { file: '/project/app/AGENTS.md', content: `closest rule ${'x'.repeat(200)}` },
   ];
 
   const context = formatInstructionContext(entries, { cwd: '/project/app', maxChars: 100 });
 
   assert.match(context, /AGENTS\.md/);
-  assert.match(context, /root rule/);
+  assert.match(context, /closest rule/);
+  assert.doesNotMatch(context, /root rule/);
   assert.ok(context.length <= 100);
 });
