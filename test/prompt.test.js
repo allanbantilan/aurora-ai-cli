@@ -51,6 +51,17 @@ test('systemPrompt requires evidence before assuming project state or framework'
   assert.match(p, /Never claim.*already present.*without tool evidence/i);
 });
 
+test('systemPrompt guides Laravel-aware project discovery with generic fallback', () => {
+  const p = systemPrompt('.');
+  assert.match(p, /You have tools: inspect_project, read_file, list_files, grep,/);
+  assert.doesNotMatch(p, /search_files/);
+  assert.match(p, /project structure.*inspect_project first/i);
+  assert.match(p, /Laravel is detected.*list_files categories/i);
+  assert.match(p, /grep presets.*routes.*eloquent-models.*inertia/i);
+  assert.match(p, /non-Laravel.*generic pattern and glob behavior/i);
+  assert.match(p, /read_file.*start_line.*end_line/i);
+});
+
 test('systemPrompt gates fresh project scaffolding and verifies installation', () => {
   const p = systemPrompt('.');
   assert.match(p, /create a fresh \[framework\] project.*STOP before any file edits/i);
