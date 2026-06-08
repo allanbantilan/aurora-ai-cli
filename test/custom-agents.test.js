@@ -3,7 +3,13 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { discoverCustomAgents, routeCustomAgentInput } from '../src/custom-agents.js';
+import {
+  createAgentTools,
+  discoverCustomAgents,
+  isolatedAgentPrompt,
+  routeCustomAgentInput,
+  runIsolatedAgent,
+} from '../src/custom-agents.js';
 
 function fixture() {
   const base = fs.mkdtempSync(path.join(os.tmpdir(), 'aurora-agents-'));
@@ -65,4 +71,69 @@ test('routeCustomAgentInput recognizes custom agents and preserves the task', ()
   });
   assert.match(routeCustomAgentInput('@reviewer', agents).error, /requires a task/i);
   assert.deepEqual(routeCustomAgentInput('@unknown task', agents), { matched: false });
+});
+
+test('createAgentTools enforces the configured tool allowlist', async () => {
+  const executed = [];
+  const tools = createAgentTools(
+    { tools: ['read_file'] },
+    {
+      definitions: [
+        { type: 'function', function: { name: 'read_file' } },
+        { type: 'function', function: { name: 'write_file' } },
+      ],
+      executeTool: async (name) => { executed.push(name); return 'ok'; },
+    }
+  );
+
+  assert.deepEqual(tools.definitions.map((tool) => tool.function.name), ['read_file']);
+  assert.equal(await tools.executeTool('read_file', {}), 'ok');
+  assert.match(await tools.executeTool('write_file', {}), /not allowed/i);
+  assert.deepEqual(executed, ['read_file']);
+});
+
+test('isolatedAgentPrompt includes agent instructions, project context, and configured skills', () => {
+  const prompt = isolatedAgentPrompt(
+    { name: 'reviewer', body: 'Review carefully.', skills: ['php-review'] },
+    {
+      instructions: 'Project rule',
+      memories: '- Prefer Pest',
+      skills: [{ name: 'php-review', body: 'Check Laravel security.' }],
+    }
+  );
+  assert.match(prompt, /Review carefully/);
+  assert.match(prompt, /Project rule/);
+  assert.match(prompt, /Prefer Pest/);
+  assert.match(prompt, /Check Laravel security/);
+});
+
+test('runIsolatedAgent uses a fresh history and returns only the final response', async () => {
+  let capturedMessages;
+  const client = {
+    chat: {
+      completions: {
+        create: async ({ messages }) => {
+          capturedMessages = messages.map((message) => ({ ...message }));
+          return {
+            async *[Symbol.asyncIterator]() {
+              yield { choices: [{ delta: { content: 'isolated result' } }] };
+            },
+          };
+        },
+      },
+    },
+  };
+  const result = await runIsolatedAgent({
+    agent: { name: 'reviewer', body: 'Review.', skills: [], tools: null, maxTurns: 4 },
+    task: 'inspect auth',
+    client,
+    models: ['m'],
+    tools: { definitions: [], executeTool: async () => 'unused' },
+    permissions: { check: async () => ({ allowed: true }) },
+    context: {},
+  });
+
+  assert.equal(result, 'isolated result');
+  assert.deepEqual(capturedMessages.map((message) => message.role), ['system', 'user']);
+  assert.match(capturedMessages[1].content, /inspect auth/);
 });

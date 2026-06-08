@@ -28,6 +28,7 @@ export async function runTurn({
   onRetry,
   onModelSwitch,
   onUsage,
+  maxIterations = MAX_ITERATIONS,
   retryDelayMs = 2000,
   stallMs = 30_000,
 }) {
@@ -56,7 +57,7 @@ export async function runTurn({
     }
   };
 
-  for (let i = 0; i < MAX_ITERATIONS; i++) {
+  for (let i = 0; i < maxIterations; i++) {
     const { content, toolCalls, usage } = await complete();
     if (usage) onUsage?.(usage);
 
@@ -86,7 +87,7 @@ export async function runTurn({
       messages.push({ role: 'tool', tool_call_id: call.id, content: result });
     }
   }
-  throw new Error(`Stopped after ${MAX_ITERATIONS} tool iterations. Ask the user how to proceed.`);
+  throw new Error(`Stopped after ${maxIterations} tool iterations. Ask the user how to proceed.`);
 }
 
 /** Race one stream read against the inter-delta stall timer. */

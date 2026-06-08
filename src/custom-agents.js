@@ -1,6 +1,7 @@
 import path from 'node:path';
 import os from 'node:os';
 import { findProjectRoot, readDefinitionDirectory } from './definitions.js';
+import { runTurn } from './agent.js';
 
 const NAME_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const MODES = new Set(['permission', 'auto', 'plan']);
@@ -65,4 +66,58 @@ export function routeCustomAgentInput(input, agents) {
     task,
     announcement: `◆ @${agent.name} dispatched — ${agent.description}`,
   };
+}
+
+export function createAgentTools(agent, tools) {
+  if (!agent.tools) return tools;
+  const allowed = new Set(agent.tools);
+  return {
+    definitions: tools.definitions.filter((tool) => allowed.has(tool.function.name)),
+    executeTool: (name, args, options) =>
+      allowed.has(name) ? tools.executeTool(name, args, options) : `Error: tool not allowed for @${agent.name}: ${name}`,
+  };
+}
+
+export function isolatedAgentPrompt(agent, { instructions = '', memories = '', skills = [] } = {}) {
+  const selectedSkills = skills
+    .filter((skill) => agent.skills.includes(skill.name))
+    .map((skill) => `## Skill: ${skill.name}\n${skill.body}`)
+    .join('\n\n')
+    .slice(0, 8_000);
+  return `You are the isolated Aurora agent @${agent.name}.
+
+## Agent instructions
+${agent.body.slice(0, 12_000)}
+
+${instructions ? `## Required project instructions\n${String(instructions).slice(0, 12_000)}\n` : ''}
+${memories ? `## User memory\n${String(memories).slice(0, 4_000)}\n` : ''}
+${selectedSkills}
+
+Work only on the delegated task. Return a concise final result for the main Aurora conversation.`;
+}
+
+export async function runIsolatedAgent({
+  agent,
+  task,
+  client,
+  models,
+  tools,
+  permissions,
+  context,
+  callbacks = {},
+}) {
+  const messages = [
+    { role: 'system', content: isolatedAgentPrompt(agent, context) },
+    { role: 'user', content: task },
+  ];
+  await runTurn({
+    client,
+    models,
+    messages,
+    tools: createAgentTools(agent, tools),
+    permissions,
+    maxIterations: agent.maxTurns,
+    ...callbacks,
+  });
+  return messages.at(-1)?.content ?? '';
 }

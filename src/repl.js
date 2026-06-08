@@ -13,6 +13,7 @@ import { formatDiff } from './diff.js';
 import { createMemoryStore, learnExplicitPreferences } from './memory.js';
 import { loadInstructions, formatInstructionContext } from './instructions.js';
 import { activateSkills, discoverSkills, formatSkillCatalog } from './skills.js';
+import { discoverCustomAgents, routeCustomAgentInput, runIsolatedAgent } from './custom-agents.js';
 import {
   createSpinner,
   CodeHighlighter,
@@ -465,6 +466,7 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
   const memoryStore = createMemoryStore({ cwd });
   const instructions = formatInstructionContext(loadInstructions({ cwd }), { cwd });
   const skills = discoverSkills({ cwd });
+  const customAgents = discoverCustomAgents({ cwd });
   const currentContext = () => ({
     instructions,
     skillCatalog: formatSkillCatalog(skills),
@@ -654,6 +656,34 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
     }
     if (input.startsWith('/')) {
       console.log(`Unknown command: ${input} — try /help`);
+      continue;
+    }
+
+    const customAgent = routeCustomAgentInput(input, customAgents);
+    if (customAgent.matched) {
+      if (customAgent.error) {
+        console.log(red(customAgent.error));
+        continue;
+      }
+      console.log(customAgent.announcement);
+      const agentPermissions = {
+        check: (name, args) => {
+          if (customAgent.agent.mode === 'plan' && tools.RISKY.has(name)) return { allowed: false };
+          if (customAgent.agent.mode === 'auto') return { allowed: true };
+          return trackedPermissions.check(name, args);
+        },
+      };
+      const result = await runIsolatedAgent({
+        agent: customAgent.agent,
+        task: customAgent.task,
+        client,
+        models: [...chain],
+        tools,
+        permissions: agentPermissions,
+        context: { ...currentContext(), skills },
+      });
+      messages.push({ role: 'user', content: input }, { role: 'assistant', content: result });
+      console.log(`\n${magenta('◆')}  ${result}`);
       continue;
     }
 
