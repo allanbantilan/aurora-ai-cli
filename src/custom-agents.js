@@ -130,3 +130,11 @@ export async function runIsolatedAgent({
   });
   return messages.at(-1)?.content ?? '';
 }
+
+export async function runIsolatedAgentSafely(options) {
+  try {
+    return { result: await runIsolatedAgent(options), error: '' };
+  } catch (error) {
+    return { result: '', error: error instanceof Error ? error.message : String(error) };
+  }
+}

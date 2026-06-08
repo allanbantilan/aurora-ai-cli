@@ -13,7 +13,7 @@ import { formatDiff } from './diff.js';
 import { createMemoryStore, learnExplicitPreferences } from './memory.js';
 import { loadInstructions, formatInstructionContext } from './instructions.js';
 import { activateSkills, discoverSkills, formatSkillCatalog } from './skills.js';
-import { createAgentPermissions, discoverCustomAgents, routeCustomAgentInput, runIsolatedAgent } from './custom-agents.js';
+import { createAgentPermissions, discoverCustomAgents, routeCustomAgentInput, runIsolatedAgentSafely } from './custom-agents.js';
 import {
   createSpinner,
   CodeHighlighter,
@@ -693,7 +693,7 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
       }
       console.log(customAgent.announcement);
       const agentPermissions = createAgentPermissions(customAgent.agent, trackedPermissions, tools.RISKY);
-      const result = await runIsolatedAgent({
+      const agentRun = await runIsolatedAgentSafely({
         agent: customAgent.agent,
         task: customAgent.task,
         client,
@@ -702,6 +702,11 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
         permissions: agentPermissions,
         context: { ...currentContext(), skills },
       });
+      if (agentRun.error) {
+        console.log(red(`@${customAgent.agent.name} failed: ${agentRun.error}`));
+        continue;
+      }
+      const result = agentRun.result;
       messages.push({ role: 'user', content: input }, { role: 'assistant', content: result });
       console.log(`\n${magenta('◆')}  ${result}`);
       continue;

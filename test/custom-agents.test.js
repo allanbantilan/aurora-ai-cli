@@ -10,6 +10,7 @@ import {
   isolatedAgentPrompt,
   routeCustomAgentInput,
   runIsolatedAgent,
+  runIsolatedAgentSafely,
 } from '../src/custom-agents.js';
 
 function fixture() {
@@ -153,4 +154,26 @@ test('runIsolatedAgent uses a fresh history and returns only the final response'
   assert.equal(result, 'isolated result');
   assert.deepEqual(capturedMessages.map((message) => message.role), ['system', 'user']);
   assert.match(capturedMessages[1].content, /inspect auth/);
+});
+
+test('runIsolatedAgentSafely captures agent failures so the REPL can continue', async () => {
+  const result = await runIsolatedAgentSafely({
+    agent: { name: 'reviewer', body: 'Review.', skills: [], tools: null, maxTurns: 4 },
+    task: 'inspect auth',
+    client: {
+      chat: {
+        completions: {
+          create: async () => {
+            throw new Error('provider unavailable');
+          },
+        },
+      },
+    },
+    models: ['m'],
+    tools: { definitions: [], executeTool: async () => 'unused' },
+    permissions: { check: async () => ({ allowed: true }) },
+    context: {},
+  });
+
+  assert.deepEqual(result, { result: '', error: 'provider unavailable' });
 });
