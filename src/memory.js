@@ -29,8 +29,18 @@ function writeJson(file, value) {
   fs.writeFileSync(file, `${JSON.stringify(value, null, 2)}\n`);
 }
 
+function projectRoot(cwd) {
+  let current = path.resolve(cwd);
+  for (;;) {
+    if (fs.existsSync(path.join(current, '.git'))) return current;
+    const parent = path.dirname(current);
+    if (parent === current) return path.resolve(cwd);
+    current = parent;
+  }
+}
+
 function projectId(cwd) {
-  return crypto.createHash('sha256').update(path.resolve(cwd).toLocaleLowerCase()).digest('hex').slice(0, 16);
+  return crypto.createHash('sha256').update(projectRoot(cwd).toLocaleLowerCase()).digest('hex').slice(0, 16);
 }
 
 function memoryFile(baseDir, cwd, scope) {

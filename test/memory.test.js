@@ -73,6 +73,20 @@ test('memory store isolates project preferences by working directory', () => {
   assert.deepEqual(other.list(), []);
 });
 
+test('memory store shares project preferences across repository subdirectories', () => {
+  const baseDir = fs.mkdtempSync(path.join(os.tmpdir(), 'aurora-memory-'));
+  const root = path.join(baseDir, 'project');
+  const child = path.join(root, 'packages', 'app');
+  fs.mkdirSync(path.join(root, '.git'), { recursive: true });
+  fs.mkdirSync(child, { recursive: true });
+
+  createMemoryStore({ baseDir, cwd: root }).add('Use Pest.', 'project');
+
+  assert.deepEqual(createMemoryStore({ baseDir, cwd: child }).list(), [
+    { scope: 'project', text: 'Use Pest.' },
+  ]);
+});
+
 test('extractExplicitPreferences keeps explicit durable preferences', () => {
   assert.deepEqual(
     extractExplicitPreferences('Please always use Pest for tests. I prefer concise commit messages. Use pnpm instead of npm.'),
