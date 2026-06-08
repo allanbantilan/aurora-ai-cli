@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {
   createAgentTools,
+  createAgentPermissions,
   discoverCustomAgents,
   isolatedAgentPrompt,
   routeCustomAgentInput,
@@ -90,6 +91,22 @@ test('createAgentTools enforces the configured tool allowlist', async () => {
   assert.equal(await tools.executeTool('read_file', {}), 'ok');
   assert.match(await tools.executeTool('write_file', {}), /not allowed/i);
   assert.deepEqual(executed, ['read_file']);
+});
+
+test('createAgentPermissions allows plan agents to restrict but never elevate parent permissions', async () => {
+  const risky = new Set(['write_file']);
+  const parent = { check: async () => ({ allowed: false, feedback: 'parent denied' }) };
+
+  assert.deepEqual(await createAgentPermissions({ mode: 'auto' }, parent, risky).check('write_file', {}), {
+    allowed: false,
+    feedback: 'parent denied',
+  });
+  assert.deepEqual(await createAgentPermissions({ mode: 'plan' }, { check: async () => ({ allowed: true }) }, risky).check('write_file', {}), {
+    allowed: false,
+  });
+  assert.deepEqual(await createAgentPermissions({ mode: 'plan' }, { check: async () => ({ allowed: true }) }, risky).check('read_file', {}), {
+    allowed: true,
+  });
 });
 
 test('isolatedAgentPrompt includes agent instructions, project context, and configured skills', () => {

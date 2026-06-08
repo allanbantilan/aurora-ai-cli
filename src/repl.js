@@ -13,7 +13,7 @@ import { formatDiff } from './diff.js';
 import { createMemoryStore, learnExplicitPreferences } from './memory.js';
 import { loadInstructions, formatInstructionContext } from './instructions.js';
 import { activateSkills, discoverSkills, formatSkillCatalog } from './skills.js';
-import { discoverCustomAgents, routeCustomAgentInput, runIsolatedAgent } from './custom-agents.js';
+import { createAgentPermissions, discoverCustomAgents, routeCustomAgentInput, runIsolatedAgent } from './custom-agents.js';
 import {
   createSpinner,
   CodeHighlighter,
@@ -692,13 +692,7 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
         continue;
       }
       console.log(customAgent.announcement);
-      const agentPermissions = {
-        check: (name, args) => {
-          if (customAgent.agent.mode === 'plan' && tools.RISKY.has(name)) return { allowed: false };
-          if (customAgent.agent.mode === 'auto') return { allowed: true };
-          return trackedPermissions.check(name, args);
-        },
-      };
+      const agentPermissions = createAgentPermissions(customAgent.agent, trackedPermissions, tools.RISKY);
       const result = await runIsolatedAgent({
         agent: customAgent.agent,
         task: customAgent.task,

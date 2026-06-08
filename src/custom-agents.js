@@ -78,6 +78,15 @@ export function createAgentTools(agent, tools) {
   };
 }
 
+export function createAgentPermissions(agent, parentPermissions, riskyTools) {
+  return {
+    check(name, args) {
+      if (agent.mode === 'plan' && riskyTools.has(name)) return { allowed: false };
+      return parentPermissions.check(name, args);
+    },
+  };
+}
+
 export function isolatedAgentPrompt(agent, { instructions = '', memories = '', skills = [] } = {}) {
   const selectedSkills = skills
     .filter((skill) => agent.skills.includes(skill.name))
