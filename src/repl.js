@@ -39,6 +39,8 @@ const COMMANDS = [
   ['/model', 'select models (order = fallback priority)'],
   ['/permission', 'select Default or Auto mode'],
   ['/plan', 'plan a feature without implementing it'],
+  ['/skills', 'list Aurora-native skills'],
+  ['/agents', 'list custom and built-in agents'],
   ['/memory', 'list memory or turn it on/off'],
   ['/remember', 'remember a project preference'],
   ['/forget', 'forget a project preference'],
@@ -341,6 +343,22 @@ export function commandList() {
   return COMMANDS.map(([c, d]) => `${c.padEnd(width)} ${d}`).join('\n');
 }
 
+export function formatSkillList(skills) {
+  if (!skills.length) return 'No Aurora skills found.';
+  return skills
+    .map((skill) => `$${skill.name} [${skill.scope}${skill.implicit ? ', implicit' : ''}] — ${skill.description}`)
+    .join('\n');
+}
+
+export function formatAgentList(customAgents, builtInAgents = AGENT_COMMANDS) {
+  const custom = customAgents.map((agent) => `@${agent.name} [${agent.scope}] — ${agent.description}`);
+  const customNames = new Set(customAgents.map((agent) => `@${agent.name}`));
+  const builtIn = builtInAgents
+    .filter(([name]) => !customNames.has(name))
+    .map(([name, description]) => `${name} [built-in] — ${description}`);
+  return [...custom, ...builtIn].join('\n') || 'No Aurora agents found.';
+}
+
 export function parseMemoryCommand(input) {
   const match = input.match(/^\/(memory|remember|forget)(?:\s+(.*))?$/i);
   if (!match) return null;
@@ -616,6 +634,14 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
     if (input === '/clear') {
       messages = [messages[0]];
       console.log('(conversation cleared)');
+      continue;
+    }
+    if (input === '/skills') {
+      console.log(formatSkillList(skills));
+      continue;
+    }
+    if (input === '/agents') {
+      console.log(formatAgentList(customAgents));
       continue;
     }
     const memoryCommand = parseMemoryCommand(input);

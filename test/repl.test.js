@@ -43,6 +43,8 @@ import {
   ENVIRONMENT_CONTINUATION_RETRY_PROMPT,
   parseMemoryCommand,
   executeMemoryCommand,
+  formatSkillList,
+  formatAgentList,
 } from '../src/repl.js';
 
 test('createEchoSuppressor drops an exact first-line echo of the user input', () => {
@@ -131,7 +133,7 @@ test('completeCommand completes a unique prefix', () => {
 
 test('completeCommand lists all commands for bare slash', () => {
   const [hits] = completeCommand('/');
-  assert.deepEqual(hits, ['/model', '/permission', '/plan', '/memory', '/remember', '/forget', '/clear', '/help', '/exit']);
+  assert.deepEqual(hits, ['/model', '/permission', '/plan', '/skills', '/agents', '/memory', '/remember', '/forget', '/clear', '/help', '/exit']);
 });
 
 test('completeCommand returns no hits for non-command input', () => {
@@ -222,7 +224,19 @@ test('inputMenuPrefix detects bare slash and @ triggers only', () => {
 
 test('commandList includes every command with a description', () => {
   const text = commandList();
-  for (const c of ['/model', '/permission', '/plan', '/memory', '/remember', '/forget', '/clear', '/help', '/exit']) assert.match(text, new RegExp(c.replace('/', '\\/')));
+  for (const c of ['/model', '/permission', '/plan', '/skills', '/agents', '/memory', '/remember', '/forget', '/clear', '/help', '/exit']) assert.match(text, new RegExp(c.replace('/', '\\/')));
+});
+
+test('formatSkillList and formatAgentList show discovered definitions and scopes', () => {
+  assert.equal(formatSkillList([]), 'No Aurora skills found.');
+  assert.match(formatSkillList([{ name: 'pest', description: 'Add Pest tests', scope: 'project', implicit: true }]), /\$pest.*project.*implicit.*Add Pest tests/);
+
+  const agents = formatAgentList(
+    [{ name: 'reviewer', description: 'Custom review', scope: 'project' }],
+    [['@review', 'Built-in review']]
+  );
+  assert.match(agents, /@reviewer.*project.*Custom review/);
+  assert.match(agents, /@review.*built-in.*Built-in review/);
 });
 
 test('parseMemoryCommand recognizes memory controls and scoped values', () => {
