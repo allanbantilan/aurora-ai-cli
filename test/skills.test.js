@@ -1,0 +1,63 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { discoverSkills, formatSkillCatalog } from '../src/skills.js';
+
+function fixture() {
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), 'aurora-skills-'));
+  const home = path.join(base, 'home');
+  const root = path.join(base, 'project');
+  const cwd = path.join(root, 'packages', 'app');
+  fs.mkdirSync(path.join(root, '.git'), { recursive: true });
+  fs.mkdirSync(cwd, { recursive: true });
+  return { home, root, cwd };
+}
+
+function skill(dir, name, frontmatter, body = 'Follow the workflow.') {
+  const folder = path.join(dir, '.aurora', 'skills', name);
+  fs.mkdirSync(folder, { recursive: true });
+  fs.writeFileSync(path.join(folder, 'SKILL.md'), `---\n${frontmatter}\n---\n\n${body}\n`);
+}
+
+test('discoverSkills loads global and project skills with project override precedence', () => {
+  const { home, root, cwd } = fixture();
+  skill(home, 'testing', 'name: testing\ndescription: Global testing workflow');
+  skill(root, 'testing', 'name: testing\ndescription: Project testing workflow');
+  skill(root, 'review', 'name: review\ndescription: Review the current changes');
+
+  const skills = discoverSkills({ home, cwd });
+
+  assert.deepEqual(skills.map(({ name, description, scope }) => ({ name, description, scope })), [
+    { name: 'review', description: 'Review the current changes', scope: 'project' },
+    { name: 'testing', description: 'Project testing workflow', scope: 'project' },
+  ]);
+});
+
+test('discoverSkills ignores malformed definitions safely', () => {
+  const { root, cwd, home } = fixture();
+  skill(root, 'missing-description', 'name: missing-description');
+  skill(root, 'bad-name', 'name: Bad Name\ndescription: invalid');
+  skill(root, 'valid', 'name: valid-skill\ndescription: Valid skill\nimplicit: true');
+
+  const skills = discoverSkills({ home, cwd });
+
+  assert.equal(skills.length, 1);
+  assert.equal(skills[0].name, 'valid-skill');
+  assert.equal(skills[0].implicit, true);
+  assert.match(skills[0].body, /Follow the workflow/);
+});
+
+test('formatSkillCatalog includes metadata without full skill bodies and respects budget', () => {
+  const skills = [
+    { name: 'review', description: 'Review changes', body: 'SECRET FULL BODY', file: 'x' },
+    { name: 'test', description: 'Add tests', body: 'ANOTHER BODY', file: 'y' },
+  ];
+
+  const catalog = formatSkillCatalog(skills, { maxChars: 80 });
+
+  assert.match(catalog, /\$review.*Review changes/);
+  assert.doesNotMatch(catalog, /SECRET FULL BODY|ANOTHER BODY/);
+  assert.ok(catalog.length <= 80);
+});
