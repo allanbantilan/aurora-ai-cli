@@ -217,6 +217,53 @@ test('grep reports no matches', () => {
   assert.equal(grep.execute({ pattern: 'zzz' }, dir), '(no matches)');
 });
 
+test('grep uses generic PHP class and method presets outside Laravel', () => {
+  const dir = tmpProject();
+  fs.mkdirSync(path.join(dir, 'lib'));
+  fs.writeFileSync(path.join(dir, 'lib', 'Worker.php'), '<?php\nclass Worker\n{\n    public function run() {}\n}\n');
+
+  assert.equal(grep.execute({ preset: 'php-classes' }, dir), 'lib/Worker.php:2: class Worker');
+  assert.equal(grep.execute({ preset: 'php-methods' }, dir), 'lib/Worker.php:4: public function run() {}');
+});
+
+test('grep uses Laravel and Vue presets with defaults and caller overrides', () => {
+  const dir = tmpLaravelProject();
+  const files = {
+    'routes/web.php': "<?php\nRoute::get('/products', ProductController::class);\n",
+    'app/Models/Product.php': '<?php\nclass Product extends Model {}\n',
+    'resources/js/Pages/Products/Index.vue': '<script setup>\nimport { useForm } from "@inertiajs/vue3";\n</script>\n',
+  };
+  for (const [rel, content] of Object.entries(files)) {
+    fs.mkdirSync(path.dirname(path.join(dir, rel)), { recursive: true });
+    fs.writeFileSync(path.join(dir, rel), content);
+  }
+
+  assert.match(grep.execute({ preset: 'routes' }, dir), /routes\/web\.php:2/);
+  assert.match(grep.execute({ preset: 'eloquent-models' }, dir), /app\/Models\/Product\.php:2/);
+  assert.match(grep.execute({ preset: 'inertia' }, dir), /resources\/js\/Pages\/Products\/Index\.vue:2/);
+  assert.equal(
+    grep.execute({ preset: 'routes', pattern: 'ProductController' }, dir),
+    "routes/web.php:2: Route::get('/products', ProductController::class);"
+  );
+});
+
+test('grep rejects unknown presets and Laravel presets in generic projects', () => {
+  const laravel = tmpLaravelProject();
+  assert.throws(() => grep.execute({ preset: 'services' }, laravel), /Unknown grep preset/);
+  assert.throws(() => grep.execute({ preset: 'routes' }, tmpProject()), /requires a detected Laravel project/);
+});
+
+test('grep requires a pattern without a preset and resets global regex state per line', () => {
+  const dir = tmpProject();
+  fs.writeFileSync(path.join(dir, 'src', 'app.js'), 'const x = 1;\nconst x = 2;\n');
+
+  assert.throws(() => grep.execute({}, dir), /pattern is required/);
+  assert.equal(
+    grep.execute({ pattern: 'const x', glob: '**/*.js', regex_flags: 'g' }, dir),
+    'src/app.js:1: const x = 1;\nsrc/app.js:2: const x = 2;'
+  );
+});
+
 test('write_file creates a file, including parent dirs', () => {
   const dir = tmpProject();
   writeFile.execute({ path: 'new/deep/file.txt', content: 'hi' }, dir);
