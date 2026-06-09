@@ -1,8 +1,10 @@
 import path from 'node:path';
 import os from 'node:os';
+import { fileURLToPath } from 'node:url';
 import { findProjectRoot, readDefinitionDirectory } from './definitions.js';
 
 const NAME_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+const DEFAULT_BUNDLED_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'skills');
 
 function validSkill(parsed, scope) {
   const { name, description, implicit = false } = parsed.metadata;
@@ -18,7 +20,7 @@ function validSkill(parsed, scope) {
   };
 }
 
-export function discoverSkills({ cwd = process.cwd(), home = os.homedir() } = {}) {
+export function discoverSkills({ cwd = process.cwd(), home = os.homedir(), bundledDir = DEFAULT_BUNDLED_DIR } = {}) {
   const root = findProjectRoot(cwd);
   const byName = new Map();
   const load = (dir, scope) => {
@@ -27,6 +29,7 @@ export function discoverSkills({ cwd = process.cwd(), home = os.homedir() } = {}
       if (skill) byName.set(skill.name, skill);
     }
   };
+  load(bundledDir, 'bundled');
   load(path.join(home, '.aurora', 'skills'), 'global');
   load(path.join(root, '.aurora', 'skills'), 'project');
   return [...byName.values()].sort((a, b) => a.name.localeCompare(b.name));
@@ -63,7 +66,7 @@ export function activateSkills(input, skills, { maxChars = 8_000 } = {}) {
       if (!skill.implicit) return false;
       const descriptionWords = words(skill.description);
       const overlap = [...descriptionWords].filter((word) => inputWords.has(word)).length;
-      return overlap >= 2 && overlap / Math.max(descriptionWords.size, 1) >= 0.4;
+      return overlap >= 2 && overlap / Math.max(descriptionWords.size, 1) >= 0.2;
     }).slice(0, 2);
   }
 
