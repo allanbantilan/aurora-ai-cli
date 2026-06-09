@@ -33,6 +33,8 @@ import {
   renderPlan,
   renderDoneSummary,
   colorEnabled,
+  formatToolActivityGroup,
+  isGroupableToolActivity,
 } from './ui.js';
 
 const COMMANDS = [
@@ -53,6 +55,37 @@ export const AUTO_WARNING = 'Enable Auto mode? All file changes and shell comman
 export const PLAN_PROMPT = 'What feature should Aurora plan? > ';
 export const PLAN_IMPLEMENT_PROMPT = 'Proceed with implementation?';
 const PLAN_PROTOCOL_RE = /\n?<!-- AURORA_PLAN_PROTOCOL\s*\n([\s\S]*?)\s*-->\s*$/;
+
+export function createToolActivityGroup({
+  interactive = interactiveEnabled,
+  print = console.log,
+  failed = (name, result) =>
+    isCommandFailure(name, result) || /^(?:Error:|User denied)/i.test(String(result)),
+} = {}) {
+  let expanded = !interactive;
+  let calls = [];
+
+  return {
+    record(name, args, result) {
+      if (!isGroupableToolActivity(name) || failed(name, result)) return false;
+      calls.push({ name, args });
+      return true;
+    },
+    flush() {
+      if (!calls.length) return false;
+      print(formatToolActivityGroup(calls, { expanded, interactive }));
+      calls = [];
+      return true;
+    },
+    toggle() {
+      expanded = !expanded;
+      return expanded;
+    },
+    get expanded() {
+      return expanded;
+    },
+  };
+}
 
 export function buildInputPrompt(cwd) {
   return `${dim(cwd)} ${cyan('❯')} `;

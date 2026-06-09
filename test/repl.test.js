@@ -24,6 +24,7 @@ import {
   parsePlanResponse,
   hasStructuredPlan,
   toolActivityLabel,
+  createToolActivityGroup,
   commandProgressLabel,
   reasoningActivityLabel,
   scaffoldCompletionGaps,
@@ -46,6 +47,47 @@ import {
   formatSkillList,
   formatAgentList,
 } from '../src/repl.js';
+
+test('createToolActivityGroup records successful discovery calls and flushes once', () => {
+  const printed = [];
+  const group = createToolActivityGroup({ interactive: true, print: (text) => printed.push(text) });
+
+  assert.equal(group.record('grep', { pattern: 'x' }, 'match'), true);
+  assert.equal(group.record('read_file', { path: 'a.js' }, 'Error: missing'), false);
+  assert.equal(group.record('write_file', { path: 'a.js' }, 'Wrote a.js'), false);
+  assert.equal(group.flush(), true);
+  assert.match(printed[0], /Searched for 1 pattern/);
+  assert.doesNotMatch(printed[0], /a\.js/);
+  assert.equal(group.flush(), false);
+});
+
+test('createToolActivityGroup toggles future groups between compact and expanded', () => {
+  const printed = [];
+  const group = createToolActivityGroup({ interactive: true, print: (text) => printed.push(text) });
+
+  assert.equal(group.expanded, false);
+  assert.equal(group.toggle(), true);
+  group.record('read_file', { path: 'a.js' }, 'content');
+  group.flush();
+  assert.match(printed[0], /ctrl\+o to collapse/);
+  assert.match(printed[0], /a\.js/);
+
+  assert.equal(group.toggle(), false);
+  group.record('read_file', { path: 'b.js' }, 'content');
+  group.flush();
+  assert.match(printed[1], /ctrl\+o to expand/);
+  assert.doesNotMatch(printed[1], /b\.js/);
+});
+
+test('createToolActivityGroup defaults non-interactive output to expanded', () => {
+  const printed = [];
+  const group = createToolActivityGroup({ interactive: false, print: (text) => printed.push(text) });
+
+  group.record('read_file', { path: 'a.js' }, 'content');
+  group.flush();
+  assert.match(printed[0], /a\.js/);
+  assert.doesNotMatch(printed[0], /ctrl\+o/);
+});
 
 test('createEchoSuppressor drops an exact first-line echo of the user input', () => {
   let out = '';
