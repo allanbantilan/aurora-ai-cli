@@ -29,6 +29,7 @@ import {
   commandProgressLabel,
   reasoningActivityLabel,
   scaffoldCompletionGaps,
+  maxIterationsForTurn,
   permissionSummary,
   createTickFilter,
   PHANTOM_RETRY_PROMPT,
@@ -377,6 +378,11 @@ test('prepareAgentInput routes a fresh Laravel + Vue + Inertia + Tailwind projec
   );
   assert.match(routed.announcement, /◆ @scaffold dispatched/);
   assert.match(routed.input, /composer create-project laravel\/laravel \./);
+});
+
+test('scaffold turns receive a larger tool-iteration budget without changing ordinary turns', () => {
+  assert.equal(maxIterationsForTurn({ scaffoldSession: true }), 60);
+  assert.equal(maxIterationsForTurn({ scaffoldSession: false }), undefined);
 });
 
 test('prepareAgentInput does not route in-project feature requests to scaffold', () => {

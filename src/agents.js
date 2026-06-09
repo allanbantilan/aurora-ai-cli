@@ -261,7 +261,7 @@ You must complete every numbered step in order. Do not skip any step. Do not pri
 
 Step 1 — Check if Laravel is already installed.
   Action: run list_files on the cwd.
-  If composer.json AND artisan are both present → skip to Step 3.
+  If composer.json AND artisan are both present → run php artisan --version, then skip to Step 3.
   If either is missing → continue to Step 2.
 
 Step 2 — Install Laravel.
@@ -278,8 +278,9 @@ Step 3 — Install PHP dependencies for Inertia.
 
 Step 4 — Publish and register Inertia middleware.
   Action: run_command → php artisan inertia:middleware
-  Read bootstrap/app.php and register HandleInertiaRequests in the web middleware append list.
-  For Laravel 10, read app/Http/Kernel.php and append it to $middlewareGroups['web'].
+  Use the php artisan --version result from Step 1 or Step 2 before choosing the registration file.
+  For Laravel 11+, read and edit only bootstrap/app.php. NEVER read app/Http/Kernel.php because it does not exist.
+  Only if php artisan --version confirms Laravel 10, read app/Http/Kernel.php and append HandleInertiaRequests to $middlewareGroups['web'].
 
 Step 5 — Install JS dependencies (Tailwind v4 — current).
   Action: run_command → npm install @inertiajs/vue3 vue @vitejs/plugin-vue tailwindcss @tailwindcss/vite

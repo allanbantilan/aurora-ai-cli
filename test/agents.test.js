@@ -73,6 +73,14 @@ test('@scaffold does not use the deprecated Tailwind v3 setup', () => {
   assert.doesNotMatch(input, /@tailwind\s+(?:base|components|utilities)/);
 });
 
+test('@scaffold never reads the Laravel 10 HTTP kernel unless Laravel 10 is confirmed', () => {
+  const { input } = routeAgentInput('@scaffold build a complete CRUD feature for Projects');
+
+  assert.match(input, /Laravel 11\+.*bootstrap\/app\.php/is);
+  assert.match(input, /never read app\/Http\/Kernel\.php/is);
+  assert.match(input, /Only if php artisan --version confirms Laravel 10.*app\/Http\/Kernel\.php/is);
+});
+
 test('isLandingPageScaffold detects landing intent and ignores other features', () => {
   assert.equal(isLandingPageScaffold('create a fresh laravel project with a landing page'), true);
   assert.equal(isLandingPageScaffold('build a marketing homepage'), true);

@@ -115,6 +115,10 @@ export function prepareAgentInput(input) {
   return { input: routed.input, announcement: routed.announcement, error: '' };
 }
 
+export function maxIterationsForTurn({ scaffoldSession = false } = {}) {
+  return scaffoldSession ? 60 : undefined;
+}
+
 export function inputMenuPrefix(line, cursor) {
   return cursor === 1 && (line === '/' || line === '@') ? line : '';
 }
@@ -845,6 +849,7 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
           messages,
           tools,
           permissions: trackedPermissions,
+          maxIterations: maxIterationsForTurn({ scaffoldSession }),
           onText: (t) => {
             assistantText += t;
             if (planningSession) return;
