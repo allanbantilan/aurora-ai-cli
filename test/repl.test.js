@@ -31,6 +31,8 @@ import {
   scaffoldCompletionGaps,
   scaffoldFeatureName,
   completionSessionForTask,
+  isFrontendBuildTask,
+  buildVerificationGaps,
   maxIterationsForTurn,
   permissionSummary,
   createTickFilter,
@@ -396,16 +398,19 @@ a FormRequest, an API resource, and a Pest feature test. Verify the build passes
     active: true,
     featureName: 'Project',
     landingPage: false,
+    buildCheck: false,
   });
   assert.deepEqual(completionSessionForTask('explain the Project model', false), {
     active: false,
     featureName: '',
     landingPage: false,
+    buildCheck: false,
   });
   assert.deepEqual(completionSessionForTask('build a CRUD feature for Orders in Express', false), {
     active: false,
     featureName: '',
     landingPage: false,
+    buildCheck: false,
   });
 });
 
@@ -414,7 +419,43 @@ test('scaffold completion protection preserves landing-page intent', () => {
     active: true,
     featureName: '',
     landingPage: true,
+    buildCheck: false,
   });
+});
+
+test('completionSessionForTask activates a build check for front-end project creation', () => {
+  assert.deepEqual(completionSessionForTask('create a Vue 3 portfolio for a plumber', false), {
+    active: true,
+    featureName: '',
+    landingPage: false,
+    buildCheck: true,
+  });
+});
+
+test('isFrontendBuildTask detects front-end project creation only', () => {
+  assert.equal(isFrontendBuildTask('create a Vue 3 portfolio for a plumber'), true);
+  assert.equal(isFrontendBuildTask('build a React app'), true);
+  assert.equal(isFrontendBuildTask('scaffold a Next.js website'), true);
+  assert.equal(isFrontendBuildTask('explain vue reactivity'), false);
+  assert.equal(isFrontendBuildTask('add a login form in vue'), false);
+});
+
+test('buildVerificationGaps is a no-op without a Node build script', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'aurora-build-'));
+  assert.deepEqual(buildVerificationGaps(dir, []), []); // no package.json
+  fs.writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ scripts: { dev: 'vite' } }));
+  assert.deepEqual(buildVerificationGaps(dir, []), []); // no build script
+});
+
+test('buildVerificationGaps requires install and a passing build when a build script exists', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'aurora-build-'));
+  fs.writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ scripts: { build: 'vite build' } }));
+  assert.deepEqual(buildVerificationGaps(dir, []), [
+    'Install dependencies (npm install).',
+    'Run the build (npm run build) and fix any errors before finishing.',
+  ]);
+  fs.mkdirSync(path.join(dir, 'node_modules'));
+  assert.deepEqual(buildVerificationGaps(dir, ['npm install', 'npm run build']), []);
 });
 
 test('prepareAgentInput does not route in-project feature requests to scaffold', () => {

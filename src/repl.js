@@ -115,14 +115,47 @@ export function prepareAgentInput(input) {
   return { input: routed.input, announcement: routed.announcement, error: '' };
 }
 
+// A request to create a front-end project (Vue/React/site/portfolio/app, etc.)
+// that is not already a Laravel scaffold — so its build can be verified.
+export function isFrontendBuildTask(task) {
+  const text = String(task);
+  const creates = /\b(?:create|build|scaffold|generate|make|start|set\s*up|bootstrap)\b/i.test(text);
+  const project = /\b(?:app|application|web\s*app|site|website|project|portfolio|spa|dashboard|landing\s*page)\b/i.test(text);
+  return creates && project;
+}
+
+// Generic completeness gate for any Node project: once a package.json with a
+// build script exists, the turn isn't done until deps are installed and the
+// build has actually run. A no-op for non-Node projects (no package.json/build).
+export function buildVerificationGaps(cwd, successfulCommands) {
+  let scripts;
+  try {
+    scripts = JSON.parse(fs.readFileSync(path.join(cwd, 'package.json'), 'utf8')).scripts ?? {};
+  } catch {
+    return [];
+  }
+  if (!scripts.build) return [];
+  const gaps = [];
+  const ran = (re) => successfulCommands.some((command) => re.test(command));
+  if (!fs.existsSync(path.join(cwd, 'node_modules')) && !ran(/\b(?:npm|pnpm|yarn|bun)\s+(?:install|i|ci|add)\b/i)) {
+    gaps.push('Install dependencies (npm install).');
+  }
+  if (!ran(/\b(?:(?:npm|pnpm|bun)\s+run\s+build|yarn(?:\s+run)?\s+build|vite\s+build)\b/i)) {
+    gaps.push('Run the build (npm run build) and fix any errors before finishing.');
+  }
+  return gaps;
+}
+
 export function completionSessionForTask(task, scaffoldSession = false) {
   const requestedFeature = scaffoldFeatureName(task);
   const laravelFeature = /\b(?:laravel|inertia|formrequest|artisan|pest|eloquent)\b/i.test(task);
   const featureName = scaffoldSession || laravelFeature ? requestedFeature : '';
+  const buildCheck = !scaffoldSession && !laravelFeature && isFrontendBuildTask(task);
   return {
-    active: scaffoldSession || Boolean(featureName),
+    active: scaffoldSession || Boolean(featureName) || buildCheck,
     featureName,
     landingPage: scaffoldSession && isLandingPageScaffold(task),
+    buildCheck,
   };
 }
 
@@ -909,7 +942,7 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
           permissions: trackedPermissions,
           maxIterations: maxIterationsForTurn({
             scaffoldSession,
-            featureSession: Boolean(completionSession.featureName),
+            featureSession: Boolean(completionSession.featureName) || completionSession.buildCheck,
           }),
           onText: (t) => {
             assistantText += t;
@@ -1034,12 +1067,14 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
             continue;
           }
           if (completionSession.active) {
-            const gaps = scaffoldCompletionGaps(process.cwd(), successfulCommands, {
-              landingPage: completionSession.landingPage,
-              featureName: completionSession.featureName,
-            });
+            const gaps = completionSession.buildCheck
+              ? buildVerificationGaps(process.cwd(), successfulCommands)
+              : scaffoldCompletionGaps(process.cwd(), successfulCommands, {
+                  landingPage: completionSession.landingPage,
+                  featureName: completionSession.featureName,
+                });
             if (gaps.length) {
-              input = `The scaffold task is not complete. Continue working and satisfy every missing requirement:\n- ${gaps.join('\n- ')}`;
+              input = `The task is not complete. Continue working and satisfy every missing requirement:\n- ${gaps.join('\n- ')}`;
               continue;
             }
           }
