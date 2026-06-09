@@ -889,6 +889,22 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
             // never dump raw [tool] JSON — show a plain-language activity line instead
             spinner.start(toolActivityLabel(name, args));
           },
+          onToolApproved: (name, args) => {
+            if (name === 'run_command') {
+              commandStarted = Date.now();
+              latestCommandProgress = String(args.command ?? '');
+              latestCommandProgressAt = commandStarted;
+              spinner.start(() =>
+                commandProgressLabel(
+                  latestCommandProgress,
+                  Math.round((Date.now() - commandStarted) / 1000),
+                  Math.round((Date.now() - latestCommandProgressAt) / 1000)
+                )
+              );
+              return;
+            }
+            spinner.start(toolActivityLabel(name, args));
+          },
           onToolProgress: (name, text) => {
             if (name === 'run_command') {
               latestCommandProgress = text;

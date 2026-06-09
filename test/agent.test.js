@@ -199,6 +199,33 @@ test('tool progress is forwarded while a tool executes', async () => {
   assert.deepEqual(progress, [['run_command', 'Downloading packages']]);
 });
 
+test('onToolApproved fires after permission resolves and before execution', async () => {
+  const events = [];
+  const client = fakeClient([
+    toolCallChunks('c1', 'run_command', '{"command":"composer install"}'),
+    [chunk({ content: 'done' })],
+  ]);
+  await runTurn({
+    client,
+    models: ['m'],
+    messages: [{ role: 'user', content: 'install' }],
+    tools: fakeTools(async () => {
+      events.push('execute');
+      return 'installed';
+    }),
+    permissions: {
+      check: async () => {
+        events.push('approved');
+        return { allowed: true };
+      },
+    },
+    onToolStart: () => events.push('start'),
+    onToolApproved: () => events.push('resume-ui'),
+  });
+
+  assert.deepEqual(events, ['start', 'approved', 'resume-ui', 'execute']);
+});
+
 test('onToolEnd fires with the denial message when permission is refused', async () => {
   const calls = [];
   const client = fakeClient([

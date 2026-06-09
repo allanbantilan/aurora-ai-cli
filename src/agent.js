@@ -23,6 +23,7 @@ export async function runTurn({
   onText,
   onReasoning,
   onToolStart,
+  onToolApproved,
   onToolProgress,
   onToolEnd,
   onRetry,
@@ -79,6 +80,7 @@ export async function runTurn({
       if (result === undefined) {
         onToolStart?.(name, args);
         const { allowed, feedback } = await permissions.check(name, args);
+        if (allowed) onToolApproved?.(name, args);
         result = allowed
           ? await tools.executeTool(name, args, { onProgress: (text) => onToolProgress?.(name, text) })
           : `User denied this action.${feedback ? ` Instruction: ${feedback}` : ''}`;
