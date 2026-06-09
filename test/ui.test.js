@@ -112,6 +112,30 @@ test('spinner update accepts a text function and renders its value', () => {
   assert.deepEqual(logs, ['thinking...', 'reasoning... (3s)']);
 });
 
+test('animated spinner update() does not draw synchronously — the interval drives redraws', () => {
+  // Regression: a high-output command fired update() per chunk (~55k/sec),
+  // each a synchronous TTY write, freezing the UI. update() must only store
+  // text; the 80ms interval is the sole drawing path.
+  const writes = [];
+  const s = createSpinner({ write: (str) => writes.push(str), enabled: true });
+  s.start('working');
+  const afterStart = writes.length;
+  assert.ok(afterStart >= 1, 'start should draw once');
+  for (let i = 0; i < 500; i++) s.update(`chunk ${i}`);
+  assert.equal(writes.length - afterStart, 0, 'update() must not draw synchronously');
+  s.stop();
+});
+
+test('animated spinner renders the latest text on its interval tick', async () => {
+  const writes = [];
+  const s = createSpinner({ write: (str) => writes.push(str), enabled: true, intervalMs: 5 });
+  s.start('first');
+  s.update('second');
+  await new Promise((r) => setTimeout(r, 40));
+  s.stop();
+  assert.ok(writes.some((w) => w.includes('second')), 'interval should redraw with the updated text');
+});
+
 test('highlighter passes prose through unchanged', () => {
   const h = new CodeHighlighter({ enabled: true });
   assert.equal(h.highlight('hello world\n'), 'hello world\n');

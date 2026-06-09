@@ -125,9 +125,12 @@ const ASCII_FRAMES = ['-', '\\', '|', '/'];
 /** Text may be a string or a function re-evaluated on every render (for time-driven content). */
 const renderText = (t) => (typeof t === 'function' ? t() : t);
 
-/** Animated one-line spinner. Falls back to a static line on non-TTY stdout. */
-export function createSpinner() {
-  if (!colorEnabled) {
+/**
+ * Animated one-line spinner. Falls back to a static line on non-TTY stdout.
+ * write/enabled/intervalMs are injectable for tests; defaults preserve behavior.
+ */
+export function createSpinner({ write = (s) => process.stdout.write(s), enabled = colorEnabled, intervalMs = 80 } = {}) {
+  if (!enabled) {
     let shown = false;
     return {
       start(text) {
@@ -151,26 +154,28 @@ export function createSpinner() {
   let text = '';
   let i = 0;
   const draw = () =>
-    process.stdout.write(`\r${ESC}[2K${cyan(frames[i++ % frames.length])} ${dim(renderText(text))}`);
+    write(`\r${ESC}[2K${cyan(frames[i++ % frames.length])} ${dim(renderText(text))}`);
 
   return {
     start(t) {
       text = t;
       if (!timer) {
-        timer = setInterval(draw, 80);
+        timer = setInterval(draw, intervalMs);
         timer.unref(); // never hold the process open
       }
       draw();
     },
+    // Only store the new text; the interval is the sole drawing path. Drawing
+    // here would couple redraw rate to caller frequency — a high-output command
+    // streaming progress per chunk (~55k/sec) froze the UI with synchronous writes.
     update(t) {
       text = t;
-      draw();
     },
     stop() {
       if (timer) {
         clearInterval(timer);
         timer = null;
-        process.stdout.write(`\r${ESC}[2K`);
+        write(`\r${ESC}[2K`);
       }
     },
   };
