@@ -10,14 +10,11 @@ test('read-only tools are always allowed without asking', async () => {
   assert.deepEqual(await perms.check('grep', { pattern: 'x' }), { allowed: true });
 });
 
-test('risky tool asks; yes grants that file for the session, other commands still ask', async () => {
+test('risky tool asks every time when the user chooses allow once', async () => {
   const answers = [{ choice: 'yes' }, { choice: 'no' }];
   const perms = createPermissions(async () => answers.shift());
   assert.equal((await perms.check('write_file', { path: 'a', content: '' })).allowed, true);
-  // same path: covered by the earlier grant, no re-prompt
-  assert.equal((await perms.check('write_file', { path: 'a', content: '' })).allowed, true);
-  // run_command has no path memory — next ask consumes the 'no'
-  assert.equal((await perms.check('run_command', { command: 'rm x' })).allowed, false);
+  assert.equal((await perms.check('write_file', { path: 'a', content: '' })).allowed, false);
 });
 
 test('always allows the tool for the rest of the session', async () => {
@@ -102,7 +99,7 @@ test('invalid mode falls back to permission behavior', async () => {
   assert.equal(asks, 1);
 });
 
-test('a granted file path never re-prompts this session', async () => {
+test('a granted file path re-prompts after allow once', async () => {
   let asks = 0;
   const p = createPermissions(async () => {
     asks += 1;
@@ -111,9 +108,9 @@ test('a granted file path never re-prompts this session', async () => {
   await p.check('write_file', { path: 'index.html' });
   const second = await p.check('edit_file', { path: 'index.html' });
   assert.equal(second.allowed, true);
-  assert.equal(asks, 1); // same path: write then edit, asked only once
+  assert.equal(asks, 2);
   await p.check('write_file', { path: 'other.html' });
-  assert.equal(asks, 2); // a different path still asks
+  assert.equal(asks, 3);
 });
 
 test('session-wide tool grant also covers new paths without prompting', async () => {
