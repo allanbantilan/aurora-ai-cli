@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { AGENT_COMMANDS, routeAgentInput } from '../src/agents.js';
+import { AGENT_COMMANDS, routeAgentInput, isLandingPageScaffold } from '../src/agents.js';
 
 const CASES = [
   ['simplify', 'src/utils.js', /Simplified \[file\]: N changes, logic unchanged\./],
@@ -71,6 +71,26 @@ test('@scaffold does not use the deprecated Tailwind v3 setup', () => {
   assert.doesNotMatch(input, /postcss\.config\.js/);
   assert.doesNotMatch(input, /autoprefixer/);
   assert.doesNotMatch(input, /@tailwind\s+(?:base|components|utilities)/);
+});
+
+test('isLandingPageScaffold detects landing intent and ignores other features', () => {
+  assert.equal(isLandingPageScaffold('create a fresh laravel project with a landing page'), true);
+  assert.equal(isLandingPageScaffold('build a marketing homepage'), true);
+  assert.equal(isLandingPageScaffold('build a complete CRUD feature for Projects'), false);
+});
+
+test('@scaffold builds the requested feature as a vertical slice for non-landing requests', () => {
+  const { input } = routeAgentInput('@scaffold build a complete CRUD feature for Projects');
+  assert.match(input, /make:controller/);
+  assert.match(input, /--resource/);
+  assert.match(input, /Index\.vue.*Create\.vue.*Edit\.vue.*Show\.vue/s);
+  assert.doesNotMatch(input, /\bhero\b/i);
+});
+
+test('@scaffold builds a landing-page layout for landing requests', () => {
+  const { input } = routeAgentInput('@scaffold build a marketing landing page');
+  assert.match(input, /\bhero\b/i);
+  assert.match(input, /\bfooter\b/i);
 });
 
 test('agent command catalog lists every available agent for the @ menu', () => {

@@ -21,6 +21,30 @@ const CONTRACT_RULES = `
   Use ->only() on resources or select() on queries.
 `;
 
+/** True when a scaffold request explicitly asks for a landing/marketing/home page. */
+export function isLandingPageScaffold(task) {
+  return /\blanding\b|\bmarketing\s+(?:page|site)\b|\bsplash\s+page\b|\bhome\s*page\b|\bhomepage\b/i.test(String(task));
+}
+
+const landingBuildSteps = (target) => `Step 7 — Build the landing page: ${target}
+  7A — Route: read routes/web.php, add a named route using Inertia::render('PageName'), and ensure PageName matches the Vue file.
+  7B — Vue page: create resources/js/Pages/[PageName].vue with real content and Tailwind classes.
+    It MUST contain <script setup> and, in order:
+    1. <nav> with logo and links
+    2. <main> with hero, features, products/categories, and CTA sections
+    3. <footer> with link columns and copyright
+    Include at least 3 feature cards and 4 product/category cards. Do not use lorem ipsum.
+  7C — Run list_files on resources/js/Pages/ and confirm the page exists.`;
+
+const featureBuildSteps = (target) => `Step 7 — Build the requested feature as a complete vertical slice: ${target}
+  Build in dependency order; do not skip a layer.
+  7A — Data: php artisan make:model [Model] -mf. Fill $fillable, $casts (enums and dates), and relationships. Complete the migration (decimal(10,2) for money, foreignId()->constrained(), indexes on queried columns, nullable() on optionals). Run php artisan migrate and fix until it exits 0.
+  7B — Validation: php artisan make:request Store[Model]Request and Update[Model]Request; implement authorize() and rules() for every fillable field.
+  7C — Transform: php artisan make:resource [Model]Resource; shape toArray() to exactly the fields the pages need.
+  7D — Controller + routes: php artisan make:controller [Model]Controller --resource --model=[Model]. Implement index/create/store/show/edit/update/destroy using $request->validated(), eager loading, and pagination. Register Route::resource in routes/web.php with a name.
+  7E — Inertia pages in resources/js/Pages/[Model]/: Index.vue, Create.vue, Edit.vue, Show.vue. Every defineProps() key MUST match the controller's Inertia::render() payload exactly. Use useForm() for create/edit, Tailwind utility classes, and a stable :key on every v-for.
+  7F — Run list_files on resources/js/Pages/[Model]/ and confirm Index.vue, Create.vue, Edit.vue, and Show.vue exist before continuing.`;
+
 const AGENTS = {
   simplify: {
     needsArgument: true,
@@ -271,15 +295,7 @@ Step 6 — Write and verify every frontend stack file (Tailwind v4 is CSS-first 
 
 ━━━ PHASE 3: FEATURE BUILD ━━━
 
-Step 7 — Build the feature: ${target}
-  7A — Route: read routes/web.php, add a named route using Inertia::render('PageName'), and ensure PageName matches the Vue file.
-  7B — Vue page: create resources/js/Pages/[PageName].vue with real content and Tailwind classes.
-    It MUST contain <script setup> and, in order:
-    1. <nav> with logo and links
-    2. <main> with hero, features, products/categories, and CTA sections
-    3. <footer> with link columns and copyright
-    Include at least 3 feature cards and 4 product/category cards. Do not use lorem ipsum.
-  7C — Run list_files on resources/js/Pages/ and confirm the page exists.
+${isLandingPageScaffold(target) ? landingBuildSteps(target) : featureBuildSteps(target)}
 
 Step 8 — Build check.
   Action: run_command → npm run build

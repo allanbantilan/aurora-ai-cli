@@ -29,7 +29,6 @@ import {
   commandProgressLabel,
   reasoningActivityLabel,
   scaffoldCompletionGaps,
-  isLandingPageScaffold,
   permissionSummary,
   createTickFilter,
   PHANTOM_RETRY_PROMPT,
@@ -724,15 +723,6 @@ test('scaffoldCompletionGaps accepts a complete Blade landing page and successfu
   fs.writeFileSync(path.join(dir, 'resources', 'views', 'landing.blade.php'), '<section class="flex">hero</section><section>features</section><section>CTA</section><footer>footer</footer>');
 
   assert.deepEqual(scaffoldCompletionGaps(dir, ['php artisan --version', 'npm run build']), []);
-});
-
-test('isLandingPageScaffold detects landing intent and ignores other features', () => {
-  assert.equal(isLandingPageScaffold('create a fresh laravel project with a landing page'), true);
-  assert.equal(isLandingPageScaffold('build a marketing homepage'), true);
-  assert.equal(
-    isLandingPageScaffold('create a fresh Laravel + Vue 3 + Inertia + Tailwind project, then build CRUD for Projects'),
-    false
-  );
 });
 
 test('scaffoldCompletionGaps skips landing-page requirements for non-landing scaffolds', () => {

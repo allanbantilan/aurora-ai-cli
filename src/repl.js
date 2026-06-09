@@ -6,7 +6,7 @@ import { runTurn } from './agent.js';
 import * as tools from './tools/index.js';
 import { createPermissions } from './permissions.js';
 import { systemPrompt } from './prompt.js';
-import { AGENT_COMMANDS, routeAgentInput } from './agents.js';
+import { AGENT_COMMANDS, routeAgentInput, isLandingPageScaffold } from './agents.js';
 import { fetchModelStatus } from './client.js';
 import { modeLabel } from './modes.js';
 import { formatDiff } from './diff.js';
@@ -324,11 +324,6 @@ function collectPageText(cwd) {
   };
   roots.forEach(walk);
   return files.map(readTextOrEmpty).join('\n');
-}
-
-/** True when a scaffold request explicitly asks for a landing/marketing/home page. */
-export function isLandingPageScaffold(task) {
-  return /\blanding\b|\bmarketing\s+(?:page|site)\b|\bsplash\s+page\b|\bhome\s*page\b|\bhomepage\b/i.test(String(task));
 }
 
 export function scaffoldCompletionGaps(cwd, successfulCommands, { landingPage = true } = {}) {
