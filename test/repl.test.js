@@ -785,6 +785,16 @@ test('scaffoldFeatureName extracts a quoted or plain CRUD feature name', () => {
   assert.equal(scaffoldFeatureName('build a marketing landing page'), '');
 });
 
+test('scaffoldFeatureName handles varied CRUD phrasings and capitalization', () => {
+  assert.equal(scaffoldFeatureName('build a CRUD for Tasks'), 'Task');
+  assert.equal(scaffoldFeatureName('add a Posts CRUD'), 'Post');
+  assert.equal(scaffoldFeatureName('build a CRUD app for Customers'), 'Customer');
+  assert.equal(scaffoldFeatureName('build an app to manage Orders'), 'Order');
+  assert.equal(scaffoldFeatureName('build a crud for tasks'), 'Task');
+  // no CRUD/manage intent: must not grab "API"/"Pest" from incidental nouns
+  assert.equal(scaffoldFeatureName('create a Laravel project with an API resource and a Pest test'), '');
+});
+
 test('scaffoldCompletionGaps rejects a passing build when requested CRUD files are missing', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'aurora-scaffold-'));
   fs.writeFileSync(path.join(dir, 'artisan'), '');

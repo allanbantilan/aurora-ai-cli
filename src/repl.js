@@ -395,10 +395,25 @@ export function scaffoldCompletionGaps(cwd, successfulCommands, { landingPage = 
   return gaps;
 }
 
+const FEATURE_STOP_WORDS = new Set(['the', 'a', 'an', 'my', 'our', 'complete', 'full', 'simple', 'basic', 'new', 'this']);
+
+// Pull the resource/model a CRUD scaffold is about from varied phrasings, so the
+// feature-completeness gate fires regardless of how the user wrote the request.
+// Returns the singular, capitalized model name (e.g. "Projects" -> "Project") or ''.
 export function scaffoldFeatureName(task) {
-  const match = String(task).match(/\bCRUD\s+feature\s+for\s+["']?([A-Z][A-Za-z0-9_-]*)["']?/i);
-  if (!match) return '';
-  return match[1].replace(/s$/i, '');
+  const text = String(task);
+  const patterns = [
+    /\bCRUD(?:\s+[a-z]+)?\s+(?:for|of)\s+["']?([A-Za-z][A-Za-z0-9_-]*)["']?/i, // CRUD [feature|app] for X
+    /["']?([A-Za-z][A-Za-z0-9_-]*)["']?\s+CRUD\b/i,                            // X CRUD
+    /\bmanage\s+["']?([A-Za-z][A-Za-z0-9_-]*)["']?/i,                          // manage X
+  ];
+  for (const re of patterns) {
+    const word = text.match(re)?.[1];
+    if (word && !FEATURE_STOP_WORDS.has(word.toLowerCase())) {
+      return (word.charAt(0).toUpperCase() + word.slice(1)).replace(/s$/i, '');
+    }
+  }
+  return '';
 }
 
 /** One-line "tool → target" summary for the permission prompt. */
