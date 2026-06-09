@@ -78,6 +78,7 @@ test('@scaffold never reads the Laravel 10 HTTP kernel unless Laravel 10 is conf
 
   assert.match(input, /Laravel 11\+.*bootstrap\/app\.php/is);
   assert.match(input, /never read app\/Http\/Kernel\.php/is);
+  assert.match(input, /web\(append:\s*\[.*HandleInertiaRequests::class.*\]\)/is);
   assert.match(input, /Only if php artisan --version confirms Laravel 10.*app\/Http\/Kernel\.php/is);
 });
 
@@ -92,6 +93,7 @@ test('@scaffold builds the requested feature as a vertical slice for non-landing
   assert.match(input, /make:controller/);
   assert.match(input, /--resource/);
   assert.match(input, /Index\.vue.*Create\.vue.*Edit\.vue.*Show\.vue/s);
+  assert.match(input, /Pest feature test/i);
   assert.doesNotMatch(input, /\bhero\b/i);
 });
 

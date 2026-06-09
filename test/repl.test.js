@@ -29,6 +29,7 @@ import {
   commandProgressLabel,
   reasoningActivityLabel,
   scaffoldCompletionGaps,
+  scaffoldFeatureName,
   maxIterationsForTurn,
   permissionSummary,
   createTickFilter,
@@ -692,10 +693,10 @@ test('commandProgressLabel includes elapsed time during silent command phases', 
   assert.equal(commandProgressLabel('Generating optimized autoload files', 42), 'running (42s)... Generating optimized autoload files');
 });
 
-test('commandProgressLabel makes stale installer output visibly time-driven', () => {
+test('commandProgressLabel ignores idle duration and keeps the spinner text concise', () => {
   assert.equal(
     commandProgressLabel('Generating optimized autoload files', 42, 17),
-    'running (42s; no new output for 17s)... Generating optimized autoload files'
+    'running (42s)... Generating optimized autoload files'
   );
 });
 
@@ -745,6 +746,60 @@ test('scaffoldCompletionGaps still enforces install and build for non-landing sc
   fs.writeFileSync(path.join(dir, 'artisan'), '');
   const gaps = scaffoldCompletionGaps(dir, ['php artisan --version'], { landingPage: false });
   assert.deepEqual(gaps, ['Run npm run build successfully.']);
+});
+
+test('scaffoldFeatureName extracts a quoted or plain CRUD feature name', () => {
+  assert.equal(scaffoldFeatureName('build a complete CRUD feature for "Projects"'), 'Project');
+  assert.equal(scaffoldFeatureName('build CRUD feature for Orders'), 'Order');
+  assert.equal(scaffoldFeatureName('build a marketing landing page'), '');
+});
+
+test('scaffoldCompletionGaps rejects a passing build when requested CRUD files are missing', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'aurora-scaffold-'));
+  fs.writeFileSync(path.join(dir, 'artisan'), '');
+
+  const gaps = scaffoldCompletionGaps(dir, ['php artisan --version', 'npm run build'], {
+    landingPage: false,
+    featureName: 'Project',
+  });
+
+  assert.deepEqual(gaps, [
+    'Create the Project model and migration.',
+    'Create StoreProjectRequest and UpdateProjectRequest.',
+    'Create ProjectResource.',
+    'Create ProjectController and register its resource routes.',
+    'Create Project Index, Create, Edit, and Show Inertia pages.',
+    'Create a Pest feature test for Project.',
+    'Run the Project Pest feature test successfully.',
+  ]);
+});
+
+test('scaffoldCompletionGaps accepts a complete requested CRUD feature', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'aurora-scaffold-'));
+  const files = [
+    'artisan',
+    'app/Models/Project.php',
+    'database/migrations/2026_01_01_000000_create_projects_table.php',
+    'app/Http/Requests/StoreProjectRequest.php',
+    'app/Http/Requests/UpdateProjectRequest.php',
+    'app/Http/Resources/ProjectResource.php',
+    'app/Http/Controllers/ProjectController.php',
+    'routes/web.php',
+    'resources/js/Pages/Project/Index.vue',
+    'resources/js/Pages/Project/Create.vue',
+    'resources/js/Pages/Project/Edit.vue',
+    'resources/js/Pages/Project/Show.vue',
+    'tests/Feature/ProjectTest.php',
+  ];
+  for (const rel of files) {
+    fs.mkdirSync(path.dirname(path.join(dir, rel)), { recursive: true });
+    fs.writeFileSync(path.join(dir, rel), rel === 'routes/web.php' ? "Route::resource('projects', ProjectController::class);" : '');
+  }
+
+  assert.deepEqual(scaffoldCompletionGaps(dir, ['php artisan --version', 'php artisan test --filter=Project', 'npm run build'], {
+    landingPage: false,
+    featureName: 'Project',
+  }), []);
 });
 
 test('permissionSummary shows the tool and its target', () => {

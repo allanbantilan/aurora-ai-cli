@@ -289,16 +289,13 @@ export function toolActivityLabel(name, args = {}) {
   }
 }
 
-export function commandProgressLabel(text, elapsedSeconds, idleSeconds) {
+export function commandProgressLabel(text, elapsedSeconds) {
   const line = String(text)
     .split(/[\r\n]+/)
     .map((part) => part.trim())
     .filter(Boolean)
     .at(-1);
-  const timing = [];
-  if (Number.isFinite(elapsedSeconds)) timing.push(`${elapsedSeconds}s`);
-  if (Number.isFinite(idleSeconds) && idleSeconds > 0) timing.push(`no new output for ${idleSeconds}s`);
-  const elapsed = timing.length ? ` (${timing.join('; ')})` : '';
+  const elapsed = Number.isFinite(elapsedSeconds) ? ` (${elapsedSeconds}s)` : '';
   return line ? `running${elapsed}... ${line.slice(0, 100)}` : `running command${elapsed}...`;
 }
 
@@ -330,7 +327,7 @@ function collectPageText(cwd) {
   return files.map(readTextOrEmpty).join('\n');
 }
 
-export function scaffoldCompletionGaps(cwd, successfulCommands, { landingPage = true } = {}) {
+export function scaffoldCompletionGaps(cwd, successfulCommands, { landingPage = true, featureName = '' } = {}) {
   const gaps = [];
   // Universal: every scaffold must install Laravel and end on a passing build.
   if (!fs.existsSync(path.join(cwd, 'artisan'))) gaps.push('Install Laravel before building the feature.');
@@ -351,11 +348,46 @@ export function scaffoldCompletionGaps(cwd, successfulCommands, { landingPage = 
     if (!/\bclass\s*=\s*["'][^"']*(?:flex|grid|bg-|text-|px-|py-|mx-|my-|max-w-)/i.test(pages)) {
       gaps.push('Add Tailwind utility classes to the landing page.');
     }
+  } else if (featureName) {
+    const exists = (rel) => fs.existsSync(path.join(cwd, rel));
+    const plural = `${featureName.toLowerCase()}s`;
+    const migrationDir = path.join(cwd, 'database', 'migrations');
+    const hasMigration = fs.existsSync(migrationDir) &&
+      fs.readdirSync(migrationDir).some((file) => file.includes(`create_${plural}_table`));
+    const route = readTextOrEmpty(path.join(cwd, 'routes', 'web.php'));
+    if (!exists(`app/Models/${featureName}.php`) || !hasMigration) {
+      gaps.push(`Create the ${featureName} model and migration.`);
+    }
+    if (!exists(`app/Http/Requests/Store${featureName}Request.php`) || !exists(`app/Http/Requests/Update${featureName}Request.php`)) {
+      gaps.push(`Create Store${featureName}Request and Update${featureName}Request.`);
+    }
+    if (!exists(`app/Http/Resources/${featureName}Resource.php`)) gaps.push(`Create ${featureName}Resource.`);
+    if (!exists(`app/Http/Controllers/${featureName}Controller.php`) || !new RegExp(`Route::resource\\([^\\n]+${plural}`, 'i').test(route)) {
+      gaps.push(`Create ${featureName}Controller and register its resource routes.`);
+    }
+    const pageDir = `resources/js/Pages/${featureName}`;
+    if (!['Index.vue', 'Create.vue', 'Edit.vue', 'Show.vue'].every((file) => exists(`${pageDir}/${file}`))) {
+      gaps.push(`Create ${featureName} Index, Create, Edit, and Show Inertia pages.`);
+    }
+    if (!exists(`tests/Feature/${featureName}Test.php`) && !exists(`tests/Feature/${featureName}sTest.php`)) {
+      gaps.push(`Create a Pest feature test for ${featureName}.`);
+    }
+    if (!successfulCommands.some((command) =>
+      new RegExp(`\\bphp\\s+artisan\\s+test\\b.*(?:--filter(?:=|\\s+)${featureName}|${featureName})`, 'i').test(command)
+    )) {
+      gaps.push(`Run the ${featureName} Pest feature test successfully.`);
+    }
   }
   if (!successfulCommands.some((command) => /\bnpm\s+run\s+build\b/i.test(command))) {
     gaps.push('Run npm run build successfully.');
   }
   return gaps;
+}
+
+export function scaffoldFeatureName(task) {
+  const match = String(task).match(/\bCRUD\s+feature\s+for\s+["']?([A-Z][A-Za-z0-9_-]*)["']?/i);
+  if (!match) return '';
+  return match[1].replace(/s$/i, '');
 }
 
 /** One-line "tool → target" summary for the permission prompt. */
@@ -837,7 +869,6 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
         let reasoningStarted = 0;
         let commandStarted = 0;
         let latestCommandProgress = '';
-        let latestCommandProgressAt = 0;
         let assistantText = '';
         const commandFailures = [];
         toolsExecuted = [];
@@ -876,12 +907,10 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
               lastCommand = String(args.command ?? '');
               commandStarted = Date.now();
               latestCommandProgress = lastCommand;
-              latestCommandProgressAt = commandStarted;
               spinner.start(() =>
                 commandProgressLabel(
                   latestCommandProgress,
-                  Math.round((Date.now() - commandStarted) / 1000),
-                  Math.round((Date.now() - latestCommandProgressAt) / 1000)
+                  Math.round((Date.now() - commandStarted) / 1000)
                 )
               );
               return;
@@ -893,12 +922,10 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
             if (name === 'run_command') {
               commandStarted = Date.now();
               latestCommandProgress = String(args.command ?? '');
-              latestCommandProgressAt = commandStarted;
               spinner.start(() =>
                 commandProgressLabel(
                   latestCommandProgress,
-                  Math.round((Date.now() - commandStarted) / 1000),
-                  Math.round((Date.now() - latestCommandProgressAt) / 1000)
+                  Math.round((Date.now() - commandStarted) / 1000)
                 )
               );
               return;
@@ -908,12 +935,10 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
           onToolProgress: (name, text) => {
             if (name === 'run_command') {
               latestCommandProgress = text;
-              latestCommandProgressAt = Date.now();
               spinner.update(() =>
                 commandProgressLabel(
                   latestCommandProgress,
-                  Math.round((Date.now() - commandStarted) / 1000),
-                  Math.round((Date.now() - latestCommandProgressAt) / 1000)
+                  Math.round((Date.now() - commandStarted) / 1000)
                 )
               );
             }
@@ -981,6 +1006,7 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
           if (scaffoldSession) {
             const gaps = scaffoldCompletionGaps(process.cwd(), successfulCommands, {
               landingPage: isLandingPageScaffold(learningInput),
+              featureName: scaffoldFeatureName(learningInput),
             });
             if (gaps.length) {
               input = `The scaffold task is not complete. Continue working and satisfy every missing requirement:\n- ${gaps.join('\n- ')}`;

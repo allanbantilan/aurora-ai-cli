@@ -43,7 +43,8 @@ const featureBuildSteps = (target) => `Step 7 — Build the requested feature as
   7C — Transform: php artisan make:resource [Model]Resource; shape toArray() to exactly the fields the pages need.
   7D — Controller + routes: php artisan make:controller [Model]Controller --resource --model=[Model]. Implement index/create/store/show/edit/update/destroy using $request->validated(), eager loading, and pagination. Register Route::resource in routes/web.php with a name.
   7E — Inertia pages in resources/js/Pages/[Model]/: Index.vue, Create.vue, Edit.vue, Show.vue. Every defineProps() key MUST match the controller's Inertia::render() payload exactly. Use useForm() for create/edit, Tailwind utility classes, and a stable :key on every v-for.
-  7F — Run list_files on resources/js/Pages/[Model]/ and confirm Index.vue, Create.vue, Edit.vue, and Show.vue exist before continuing.`;
+  7F — Run list_files on resources/js/Pages/[Model]/ and confirm Index.vue, Create.vue, Edit.vue, and Show.vue exist before continuing.
+  7G — Pest feature test: create tests/Feature/[Model]Test.php covering index, create/store validation, show, update, and destroy. Run php artisan test --filter=[Model] and fix until it passes.`;
 
 const AGENTS = {
   simplify: {
@@ -279,7 +280,7 @@ Step 3 — Install PHP dependencies for Inertia.
 Step 4 — Publish and register Inertia middleware.
   Action: run_command → php artisan inertia:middleware
   Use the php artisan --version result from Step 1 or Step 2 before choosing the registration file.
-  For Laravel 11+, read and edit only bootstrap/app.php. NEVER read app/Http/Kernel.php because it does not exist.
+  For Laravel 11+, read and edit only bootstrap/app.php. Register exactly with $middleware->web(append: [\\App\\Http\\Middleware\\HandleInertiaRequests::class]); NEVER read app/Http/Kernel.php because it does not exist.
   Only if php artisan --version confirms Laravel 10, read app/Http/Kernel.php and append HandleInertiaRequests to $middlewareGroups['web'].
 
 Step 5 — Install JS dependencies (Tailwind v4 — current).
