@@ -1,4 +1,5 @@
 import OpenAI from 'openai';
+import { telemetryScore } from './telemetry.js';
 
 const BASE_URL = 'https://openrouter.ai/api/v1';
 
@@ -16,7 +17,7 @@ export function createClient(apiKey) {
 }
 
 /** Keep models that are free (prompt + completion price 0) and support native tool calling. */
-export function filterFreeToolModels(models) {
+export function filterFreeToolModels(models, telemetry = {}) {
   return models
     .filter(
       (m) =>
@@ -25,7 +26,11 @@ export function filterFreeToolModels(models) {
         (m.supported_parameters || []).includes('tools')
     )
     .map((m, index) => ({ id: m.id, name: m.name, context: m.context_length, index }))
-    .sort((a, b) => preferredModelRank(a.id) - preferredModelRank(b.id) || a.index - b.index)
+    .sort((a, b) =>
+      preferredModelRank(a.id) - preferredModelRank(b.id) ||
+      telemetryScore(telemetry[b.id]) - telemetryScore(telemetry[a.id]) ||
+      a.index - b.index
+    )
     .map(({ index: _index, ...model }) => model);
 }
 
@@ -34,11 +39,11 @@ function preferredModelRank(id) {
   return rank < 0 ? PREFERRED_TOOL_MODEL_PATTERNS.length : rank;
 }
 
-export async function fetchFreeToolModels() {
+export async function fetchFreeToolModels(telemetry = {}) {
   const res = await fetch(`${BASE_URL}/models`);
   if (!res.ok) throw new Error(`Model list fetch failed: HTTP ${res.status}`);
   const { data } = await res.json();
-  return filterFreeToolModels(data);
+  return filterFreeToolModels(data, telemetry);
 }
 
 const STATUS_TIMEOUT_MS = 5000;

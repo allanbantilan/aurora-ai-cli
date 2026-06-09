@@ -1,33 +1,40 @@
 #!/usr/bin/env node
-import { loadConfig, saveConfig, getApiKey, migrateConfig } from '../src/config.js';
+import { loadConfig, saveConfig, migrateConfig } from '../src/config.js';
 import { createClient, fetchFreeToolModels } from '../src/client.js';
+import { loadApiKey, migratePlaintextKey, saveApiKey } from '../src/credentials.js';
 import { promptSecret } from '../src/secret.js';
 import { startRepl } from '../src/repl.js';
 
 const config = loadConfig();
 if (migrateConfig(config)) saveConfig(config);
+if (await migratePlaintextKey({ config })) saveConfig(config);
 
-let apiKey = getApiKey(config);
+let apiKey = await loadApiKey({ config });
 if (!apiKey) {
-  apiKey = (await promptSecret('Paste your OpenRouter API key (saved to ~/.aurora/config.json): ')).trim();
+  apiKey = (await promptSecret('Paste your OpenRouter API key: ')).trim();
   if (!apiKey) {
     console.error('An API key is required. Get one at https://openrouter.ai/keys');
     process.exit(1);
   }
-  if (!getApiKey({ apiKey })) {
+  if (!apiKey.startsWith('sk-')) {
     console.error('OpenRouter API keys must start with sk-. Get one at https://openrouter.ai/keys');
     process.exit(1);
   }
-  config.apiKey = apiKey;
+  const destination = await saveApiKey(apiKey, { config });
   saveConfig(config);
-  console.log('Saved OpenRouter API key to ~/.aurora/config.json.');
+  console.log(`Saved OpenRouter API key to ${destination}.`);
+}
+
+const strictPrivacy = config.strictPrivacy === true;
+if (!strictPrivacy) {
+  console.log('[privacy] OpenRouter provider data collection is allowed. Set "strictPrivacy": true in ~/.aurora/config.json to deny it.');
 }
 
 const savedChain = Array.isArray(config.lastModels) ? config.lastModels : [];
 
 let models;
 try {
-  models = await fetchFreeToolModels();
+  models = await fetchFreeToolModels(config.modelTelemetry);
   if (!models.length) {
     console.error('No free tool-capable models are currently available on OpenRouter.');
     process.exit(1);
@@ -49,6 +56,12 @@ await startRepl({
   client: createClient(apiKey),
   models,
   initialChain,
+  strictPrivacy,
+  telemetry: config.modelTelemetry ??= {},
+  saveTelemetry: (telemetry) => {
+    config.modelTelemetry = telemetry;
+    saveConfig(config);
+  },
   saveModels: (chain) => {
     config.lastModels = chain;
     saveConfig(config);

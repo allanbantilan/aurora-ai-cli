@@ -13,6 +13,8 @@ import { formatDiff } from './diff.js';
 import { createMemoryStore, learnExplicitPreferences } from './memory.js';
 import { loadInstructions, formatInstructionContext } from './instructions.js';
 import { activateSkills, discoverSkills, formatSkillCatalog } from './skills.js';
+import { compactMessages, shouldCompact } from './context.js';
+import { recordModelEvent } from './telemetry.js';
 import { createAgentPermissions, discoverCustomAgents, routeCustomAgentInput, runIsolatedAgentSafely } from './custom-agents.js';
 import {
   createSpinner,
@@ -549,7 +551,15 @@ export function executeMemoryCommand(command, store) {
     : `No matching [${command.scope}] memory found.`;
 }
 
-export async function startRepl({ client, models, initialChain, saveModels }) {
+export async function startRepl({
+  client,
+  models,
+  initialChain,
+  saveModels,
+  strictPrivacy = false,
+  telemetry = {},
+  saveTelemetry = () => {},
+}) {
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout, completer: completeCommand });
   let mode = 'permission';
   let autoConfirmed = false;
@@ -655,6 +665,7 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
       : '',
   });
   let messages = [{ role: 'system', content: systemPrompt(cwd, mode, currentContext()) }];
+  let latestPromptTokens = 0;
 
   const permissions = createPermissions(async (toolName, args) => {
     spinner.stop();
@@ -787,6 +798,13 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
     let previousModeAfterTurn = null;
     console.log(rule());
     if (!input) continue;
+
+    const contextLimit = models.find((model) => model.id === chain[0])?.context;
+    if (shouldCompact(latestPromptTokens, contextLimit)) {
+      messages = compactMessages(messages);
+      latestPromptTokens = 0;
+      console.log(dim('conversation compacted locally to stay within the model context limit'));
+    }
 
     if (input === '/exit') break;
     if (input === '/' || input === '/help') {
@@ -933,6 +951,7 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
         const commandFailures = [];
         toolsExecuted = [];
         const planActivityStarted = Date.now();
+        const completionStarted = Date.now();
         spinner.start(planningSession ? () => planActivityText(planActivityStarted) : 'thinking...');
         await runTurn({
           client,
@@ -944,6 +963,10 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
             scaffoldSession,
             featureSession: Boolean(completionSession.featureName) || completionSession.buildCheck,
           }),
+          strictPrivacy,
+          onUsage: (usage) => {
+            if (Number.isFinite(usage?.prompt_tokens)) latestPromptTokens = usage.prompt_tokens;
+          },
           onText: (t) => {
             assistantText += t;
             if (planningSession) return;
@@ -1007,6 +1030,10 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
             }
           },
           onToolEnd: (name, args, result) => {
+            if (/^Error: invalid tool arguments/i.test(String(result))) {
+              recordModelEvent(telemetry, chain[0], { malformedToolCall: true });
+              saveTelemetry(telemetry);
+            }
             const resume = () =>
               spinner.start(planningSession ? () => planActivityText(planActivityStarted) : 'thinking...');
             if (isCommandFailure(name, result)) {
@@ -1045,6 +1072,8 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
           onRetry: (attempt, retries, delayMs) =>
             spinner.update(`rate-limited, retrying in ${delayMs / 1000}s (${attempt}/${retries})...`),
           onModelSwitch: (from, to) => {
+            recordModelEvent(telemetry, from, { availabilityFailure: true });
+            saveTelemetry(telemetry);
             spinner.stop();
             console.log(yellow(`⚠ ${shortModelName(from)} unavailable — switched to ${shortModelName(to)}`));
             spinner.start(planningSession ? () => planActivityText(planActivityStarted) : 'thinking...');
@@ -1052,6 +1081,8 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
             saveModels(chain);
           },
         });
+        recordModelEvent(telemetry, chain[0], { success: true, latencyMs: Date.now() - completionStarted });
+        saveTelemetry(telemetry);
         activityGroup.flush();
         spinner.stop();
 
