@@ -257,18 +257,17 @@ Step 4 — Publish and register Inertia middleware.
   Read bootstrap/app.php and register HandleInertiaRequests in the web middleware append list.
   For Laravel 10, read app/Http/Kernel.php and append it to $middlewareGroups['web'].
 
-Step 5 — Install JS dependencies.
-  Action: run_command → npm install @inertiajs/vue3 vue @vitejs/plugin-vue tailwindcss @tailwindcss/forms autoprefixer postcss
+Step 5 — Install JS dependencies (Tailwind v4 — current).
+  Action: run_command → npm install @inertiajs/vue3 vue @vitejs/plugin-vue tailwindcss @tailwindcss/vite
+  Tailwind v4 compiles through that Vite plugin alone — install nothing else for CSS, and never scaffold Tailwind through the old v3 init step.
   ✓ checkpoint: node_modules/ directory exists.
 
-Step 6 — Write and verify every frontend stack file:
-  - vite.config.js with laravel-vite-plugin, @vitejs/plugin-vue, resources/js/app.js, and @ alias
-  - tailwind.config.js with Blade, JS, and Vue content paths plus @tailwindcss/forms
-  - postcss.config.js with tailwindcss and autoprefixer
-  - resources/css/app.css with Tailwind base, components, and utilities
-  - resources/views/app.blade.php as the Inertia root with @vite, @inertiaHead, and @inertia
+Step 6 — Write and verify every frontend stack file (Tailwind v4 is CSS-first — it needs no generated Tailwind or PostCSS config files):
+  - vite.config.js with laravel-vite-plugin, @vitejs/plugin-vue, the @tailwindcss/vite plugin, resources/js/app.js as input, and the @ alias
+  - resources/css/app.css whose first line is exactly: @import "tailwindcss";
+  - resources/views/app.blade.php as the Inertia root with @vite (include resources/css/app.css and resources/js/app.js), @inertiaHead, and @inertia
   - resources/js/app.js using createInertiaApp and resolving ./Pages/\${name}.vue
-  Run list_files and do not continue until all six files exist.
+  Run list_files and do not continue until every file above exists.
 
 ━━━ PHASE 3: FEATURE BUILD ━━━
 

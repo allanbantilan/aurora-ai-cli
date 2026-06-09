@@ -58,6 +58,21 @@ test('@review reports findings without editing files', () => {
   assert.match(routeAgentInput('@review src/app.js').input, /Do not edit files; report findings only/);
 });
 
+test('@scaffold uses the modern Tailwind v4 + Inertia vue3 stack', () => {
+  const { input } = routeAgentInput('@scaffold build a landing page');
+  assert.match(input, /@tailwindcss\/vite/);
+  assert.match(input, /@inertiajs\/vue3/);
+  assert.match(input, /@import ["']tailwindcss["']/);
+});
+
+test('@scaffold does not use the deprecated Tailwind v3 setup', () => {
+  const { input } = routeAgentInput('@scaffold build a landing page');
+  assert.doesNotMatch(input, /tailwindcss init/i);
+  assert.doesNotMatch(input, /postcss\.config\.js/);
+  assert.doesNotMatch(input, /autoprefixer/);
+  assert.doesNotMatch(input, /@tailwind\s+(?:base|components|utilities)/);
+});
+
 test('agent command catalog lists every available agent for the @ menu', () => {
   assert.deepEqual(AGENT_COMMANDS.map(([command]) => command), [
     '@simplify',
