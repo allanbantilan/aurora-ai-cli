@@ -11,7 +11,8 @@
   },
   "scripts": {
     "test": "node --test \"test/**/*.test.js\"",
-    "eval": "node scripts/eval.js"
+    "eval": "node scripts/eval.js",
+    "eval:live-matrix": "node scripts/eval.js --live-matrix"
   },
   "dependencies": {
     "openai": "^6.42.0",

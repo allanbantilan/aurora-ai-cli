@@ -1,0 +1,33 @@
+{
+  "name": "malformed-tool-recovery",
+  "prompt": "Read package.json and report its name.",
+  "files": {
+    "package.json": "{\"name\":\"fixture-app\"}\n"
+  },
+  "responses": [
+    {
+      "tool": "read_file",
+      "args": {
+        "path": 42
+      }
+    },
+    {
+      "tool": "read_file",
+      "args": {
+        "path": "package.json"
+      }
+    },
+    {
+      "content": "The package name is fixture-app."
+    }
+  ],
+  "expect": {
+    "tools": [
+      "read_file",
+      "read_file"
+    ],
+    "contains": [
+      "fixture-app"
+    ]
+  }
+}

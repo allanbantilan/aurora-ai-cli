@@ -172,8 +172,20 @@ export async function runEvals({ live = false, model, fixturesDir = path.join(pr
 async function main() {
   const args = process.argv.slice(2);
   const live = args.includes('--live');
+  const liveMatrix = args.includes('--live-matrix');
   const modelIndex = args.indexOf('--model');
   const model = modelIndex >= 0 ? args[modelIndex + 1] : undefined;
+  if (liveMatrix) {
+    const apiKey = process.env.OPENROUTER_API_KEY;
+    if (!apiKey) throw new Error('Live evals require OPENROUTER_API_KEY');
+    const models = (await fetchFreeToolModels()).slice(0, 5);
+    for (const candidate of models) {
+      const results = await runEvals({ live: true, model: candidate.id });
+      const passed = results.filter((result) => result.passed).length;
+      console.log(`${candidate.id}: ${passed}/${results.length} evals passed`);
+    }
+    return;
+  }
   const results = await runEvals({ live, model });
   for (const result of results) {
     console.log(`${result.passed ? 'PASS' : 'FAIL'} ${result.name}${result.failures.length ? `: ${result.failures.join('; ')}` : ''}`);
