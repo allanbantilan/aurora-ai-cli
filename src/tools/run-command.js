@@ -43,6 +43,11 @@ export async function execute({ command }, cwd = process.cwd(), { onProgress, ti
       resolve(`Command failed (${reason})${detail ? `:\n${detail}` : ''}`);
     });
 
+    // Close the child's stdin so interactive prompts (npm/npx confirmations,
+    // artisan questions) see EOF and resolve instead of hanging on a pipe that
+    // is never connected to the user — which blocked the turn until timeout.
+    child.stdin?.end();
+
     const timer = setTimeout(() => {
       timedOut = true;
       onProgress?.('Command timed out; terminating process tree...');

@@ -386,3 +386,14 @@ test('run_command reports failure without throwing', async () => {
   const out = await runCommand.execute({ command: 'node -e "process.exit(3)"' }, dir);
   assert.match(out, /Command failed/);
 });
+
+test('run_command does not hang when the child waits on stdin', async () => {
+  // Child stdin must be closed so interactive prompts (npm/npx confirmations)
+  // see EOF and resolve instead of blocking the turn for the full timeout.
+  // Exits 0 on stdin EOF; otherwise exits 2 after a delay.
+  const dir = tmpProject();
+  const command =
+    'node -e "process.stdin.resume();process.stdin.on(\'end\',()=>process.exit(0));setTimeout(()=>process.exit(2),800)"';
+  const out = await runCommand.execute({ command }, dir, { timeoutMs: 4000 });
+  assert.equal(out, '(no output)');
+});
