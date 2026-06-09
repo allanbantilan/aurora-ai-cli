@@ -673,6 +673,13 @@ test('commandProgressLabel includes elapsed time during silent command phases', 
   assert.equal(commandProgressLabel('Generating optimized autoload files', 42), 'running (42s)... Generating optimized autoload files');
 });
 
+test('commandProgressLabel makes stale installer output visibly time-driven', () => {
+  assert.equal(
+    commandProgressLabel('Generating optimized autoload files', 42, 17),
+    'running (42s; no new output for 17s)... Generating optimized autoload files'
+  );
+});
+
 test('reasoningActivityLabel retains the last command context', () => {
   assert.equal(reasoningActivityLabel('composer create-project laravel/laravel .', 5), 'reasoning after composer create-project laravel/laravel . (5s)...');
 });

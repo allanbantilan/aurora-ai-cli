@@ -279,13 +279,16 @@ export function toolActivityLabel(name, args = {}) {
   }
 }
 
-export function commandProgressLabel(text, elapsedSeconds) {
+export function commandProgressLabel(text, elapsedSeconds, idleSeconds) {
   const line = String(text)
     .split(/[\r\n]+/)
     .map((part) => part.trim())
     .filter(Boolean)
     .at(-1);
-  const elapsed = Number.isFinite(elapsedSeconds) ? ` (${elapsedSeconds}s)` : '';
+  const timing = [];
+  if (Number.isFinite(elapsedSeconds)) timing.push(`${elapsedSeconds}s`);
+  if (Number.isFinite(idleSeconds) && idleSeconds > 0) timing.push(`no new output for ${idleSeconds}s`);
+  const elapsed = timing.length ? ` (${timing.join('; ')})` : '';
   return line ? `running${elapsed}... ${line.slice(0, 100)}` : `running command${elapsed}...`;
 }
 
@@ -819,6 +822,7 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
         let reasoningStarted = 0;
         let commandStarted = 0;
         let latestCommandProgress = '';
+        let latestCommandProgressAt = 0;
         let assistantText = '';
         const commandFailures = [];
         toolsExecuted = [];
@@ -856,8 +860,13 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
               lastCommand = String(args.command ?? '');
               commandStarted = Date.now();
               latestCommandProgress = lastCommand;
+              latestCommandProgressAt = commandStarted;
               spinner.start(() =>
-                commandProgressLabel(latestCommandProgress, Math.round((Date.now() - commandStarted) / 1000))
+                commandProgressLabel(
+                  latestCommandProgress,
+                  Math.round((Date.now() - commandStarted) / 1000),
+                  Math.round((Date.now() - latestCommandProgressAt) / 1000)
+                )
               );
               return;
             }
@@ -867,8 +876,13 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
           onToolProgress: (name, text) => {
             if (name === 'run_command') {
               latestCommandProgress = text;
+              latestCommandProgressAt = Date.now();
               spinner.update(() =>
-                commandProgressLabel(latestCommandProgress, Math.round((Date.now() - commandStarted) / 1000))
+                commandProgressLabel(
+                  latestCommandProgress,
+                  Math.round((Date.now() - commandStarted) / 1000),
+                  Math.round((Date.now() - latestCommandProgressAt) / 1000)
+                )
               );
             }
           },
