@@ -1,0 +1,29 @@
+{
+  "name": "eloquent-soft-delete-scope",
+  "prompt": "Add a soft delete scope to the Eloquent Order model and verify it.",
+  "files": {
+    "artisan": "",
+    "composer.json": "{\"require\":{\"laravel/framework\":\"^12.0\"}}\n",
+    "app/Models/Order.php": "<?php\n\nclass Order {}\n"
+  },
+  "responses": [
+    { "tool": "read_file", "args": { "path": "app/Models/Order.php" } },
+    {
+      "tool": "edit_file",
+      "args": {
+        "path": "app/Models/Order.php",
+        "old_string": "class Order {}",
+        "new_string": "class Order {\n    public function scopeOnlyDeleted($query) { return $query->onlyTrashed(); }\n}"
+      }
+    },
+    { "tool": "read_file", "args": { "path": "app/Models/Order.php" } },
+    { "content": "Done: added and verified the soft-delete scope." }
+  ],
+  "expect": {
+    "skills": ["eloquent"],
+    "verification": { "after": "edit_file", "tool": "read_file" },
+    "files": [
+      { "path": "app/Models/Order.php", "contains": "scopeOnlyDeleted" }
+    ]
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "name": "no-unsupported-install-claim",
+  "prompt": "Check whether Laravel is installed.",
+  "responses": [
+    { "tool": "inspect_project", "args": {} },
+    { "content": "Laravel is not detected in this project." }
+  ],
+  "expect": {
+    "tools": ["inspect_project"],
+    "contains": ["not detected"],
+    "forbid": ["Laravel is installed", "already installed"]
+  }
+}

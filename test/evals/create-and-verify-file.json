@@ -19,6 +19,8 @@
     "files": [
       { "path": "hello.txt", "contains": "hello world" }
     ],
+    "verification": { "after": "write_file", "tool": "read_file" },
+    "contains": ["verified"],
     "forbid": ["already existed"]
   }
 }

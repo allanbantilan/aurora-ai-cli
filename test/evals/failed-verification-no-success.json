@@ -1,0 +1,13 @@
+{
+  "name": "failed-verification-no-success",
+  "prompt": "Run the test command and report the result.",
+  "responses": [
+    { "tool": "run_command", "args": { "command": "node -e \"process.exit(1)\"" } },
+    { "content": "Verification failed: the test command exited with an error." }
+  ],
+  "expect": {
+    "tools": ["run_command"],
+    "contains": ["failed"],
+    "forbid": ["done", "success", "passed"]
+  }
+}

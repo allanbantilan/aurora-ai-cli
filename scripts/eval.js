@@ -6,6 +6,7 @@ import { pathToFileURL } from 'node:url';
 import { createClient, fetchFreeToolModels } from '../src/client.js';
 import { runTurn } from '../src/agent.js';
 import { systemPrompt } from '../src/prompt.js';
+import { activateSkills, discoverSkills, formatSkillCatalog } from '../src/skills.js';
 import * as toolRegistry from '../src/tools/index.js';
 
 const allowAll = { check: async () => ({ allowed: true }) };
@@ -64,10 +65,33 @@ function scopedTools(cwd) {
   };
 }
 
-function evaluateExpectations(fixture, cwd, tools, finalText) {
+function seedFiles(cwd, files = {}) {
+  for (const [relPath, content] of Object.entries(files)) {
+    const file = path.resolve(cwd, relPath);
+    if (file !== cwd && !file.startsWith(`${cwd}${path.sep}`)) throw new Error(`Eval fixture path escapes cwd: ${relPath}`);
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, content);
+  }
+}
+
+function evaluateExpectations(fixture, cwd, tools, finalText, skills) {
   const failures = [];
   if (fixture.expect?.tools && JSON.stringify(tools) !== JSON.stringify(fixture.expect.tools)) {
     failures.push(`Expected tools ${JSON.stringify(fixture.expect.tools)}, got ${JSON.stringify(tools)}`);
+  }
+  for (const forbidden of fixture.expect?.forbidTools ?? []) {
+    if (tools.includes(forbidden)) failures.push(`Used forbidden tool ${forbidden}`);
+  }
+  if (fixture.expect?.skills && JSON.stringify(skills) !== JSON.stringify(fixture.expect.skills)) {
+    failures.push(`Expected skills ${JSON.stringify(fixture.expect.skills)}, got ${JSON.stringify(skills)}`);
+  }
+  const verification = fixture.expect?.verification;
+  if (verification) {
+    const modificationIndex = tools.lastIndexOf(verification.after);
+    const verificationIndex = tools.findIndex((tool, index) => index > modificationIndex && tool === verification.tool);
+    if (modificationIndex < 0 || verificationIndex < 0) {
+      failures.push(`Expected verification tool ${verification.tool} after ${verification.after}`);
+    }
   }
   for (const expected of fixture.expect?.files ?? []) {
     const file = path.join(cwd, expected.path);
@@ -78,6 +102,11 @@ function evaluateExpectations(fixture, cwd, tools, finalText) {
     const content = fs.readFileSync(file, 'utf8');
     if (expected.contains && !content.includes(expected.contains)) {
       failures.push(`Expected ${expected.path} to contain ${JSON.stringify(expected.contains)}`);
+    }
+  }
+  for (const expected of fixture.expect?.contains ?? []) {
+    if (!finalText.toLowerCase().includes(String(expected).toLowerCase())) {
+      failures.push(`Final response did not contain expected text ${JSON.stringify(expected)}`);
     }
   }
   for (const forbidden of fixture.expect?.forbid ?? []) {
@@ -93,9 +122,16 @@ export async function runEvalFixture(fixture, { client, model = 'offline/canned'
   const tools = [];
   let finalText = '';
   try {
+    seedFiles(cwd, fixture.files);
+    const availableSkills = discoverSkills({ cwd });
+    const activation = activateSkills(fixture.prompt, availableSkills);
+    const activeSkillText = activation.selected
+      .map((skill) => `## Active skill: $${skill.name}\n${skill.body}`)
+      .join('\n\n');
+    const userContent = [activation.input, activeSkillText].filter(Boolean).join('\n\n');
     const messages = [
-      { role: 'system', content: systemPrompt(cwd) },
-      { role: 'user', content: fixture.prompt },
+      { role: 'system', content: systemPrompt(cwd, 'permission', { skillCatalog: formatSkillCatalog(availableSkills) }) },
+      { role: 'user', content: userContent },
     ];
     await runTurn({
       client: client ?? cannedClient(fixture.responses ?? []),
@@ -109,10 +145,11 @@ export async function runEvalFixture(fixture, { client, model = 'offline/canned'
       onToolEnd: (name) => tools.push(name),
       retryDelayMs: 0,
     });
-    const failures = evaluateExpectations(fixture, cwd, tools, finalText);
-    return { name: fixture.name, passed: failures.length === 0, failures, tools, finalText };
+    const skills = activation.selected.map((skill) => skill.name);
+    const failures = evaluateExpectations(fixture, cwd, tools, finalText, skills);
+    return { name: fixture.name, passed: failures.length === 0, failures, tools, skills, finalText };
   } catch (error) {
-    return { name: fixture.name, passed: false, failures: [error.message], tools, finalText };
+    return { name: fixture.name, passed: false, failures: [error.message], tools, skills: [], finalText };
   } finally {
     fs.rmSync(cwd, { recursive: true, force: true });
   }

@@ -1,0 +1,16 @@
+{
+  "name": "dedicated-file-tools",
+  "prompt": "Find the exported value in src/value.js and inspect the file.",
+  "files": {
+    "src/value.js": "export const value = 42;\n"
+  },
+  "responses": [
+    { "tool": "grep", "args": { "pattern": "value", "glob": "src/**/*.js" } },
+    { "tool": "read_file", "args": { "path": "src/value.js" } },
+    { "content": "Found and inspected src/value.js." }
+  ],
+  "expect": {
+    "tools": ["grep", "read_file"],
+    "forbidTools": ["run_command"]
+  }
+}
