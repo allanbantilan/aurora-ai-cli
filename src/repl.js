@@ -115,8 +115,19 @@ export function prepareAgentInput(input) {
   return { input: routed.input, announcement: routed.announcement, error: '' };
 }
 
-export function maxIterationsForTurn({ scaffoldSession = false } = {}) {
-  return scaffoldSession ? 60 : undefined;
+export function completionSessionForTask(task, scaffoldSession = false) {
+  const requestedFeature = scaffoldFeatureName(task);
+  const laravelFeature = /\b(?:laravel|inertia|formrequest|artisan|pest|eloquent)\b/i.test(task);
+  const featureName = scaffoldSession || laravelFeature ? requestedFeature : '';
+  return {
+    active: scaffoldSession || Boolean(featureName),
+    featureName,
+    landingPage: scaffoldSession && isLandingPageScaffold(task),
+  };
+}
+
+export function maxIterationsForTurn({ scaffoldSession = false, featureSession = false } = {}) {
+  return scaffoldSession || featureSession ? 60 : undefined;
 }
 
 export function inputMenuPrefix(line, cursor) {
@@ -835,6 +846,7 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
     }
     if (agentInput.announcement) console.log(agentInput.announcement);
     const scaffoldSession = /@scaffold dispatched/.test(agentInput.announcement);
+    const completionSession = completionSessionForTask(learningInput, scaffoldSession);
     input = agentInput.input;
 
     let planningSession = previousModeAfterTurn !== null;
@@ -880,7 +892,10 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
           messages,
           tools,
           permissions: trackedPermissions,
-          maxIterations: maxIterationsForTurn({ scaffoldSession }),
+          maxIterations: maxIterationsForTurn({
+            scaffoldSession,
+            featureSession: Boolean(completionSession.featureName),
+          }),
           onText: (t) => {
             assistantText += t;
             if (planningSession) return;
@@ -1003,10 +1018,10 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
             input = TOOL_PAYLOAD_RETRY_PROMPT;
             continue;
           }
-          if (scaffoldSession) {
+          if (completionSession.active) {
             const gaps = scaffoldCompletionGaps(process.cwd(), successfulCommands, {
-              landingPage: isLandingPageScaffold(learningInput),
-              featureName: scaffoldFeatureName(learningInput),
+              landingPage: completionSession.landingPage,
+              featureName: completionSession.featureName,
             });
             if (gaps.length) {
               input = `The scaffold task is not complete. Continue working and satisfy every missing requirement:\n- ${gaps.join('\n- ')}`;

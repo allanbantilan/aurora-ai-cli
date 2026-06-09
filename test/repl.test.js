@@ -30,6 +30,7 @@ import {
   reasoningActivityLabel,
   scaffoldCompletionGaps,
   scaffoldFeatureName,
+  completionSessionForTask,
   maxIterationsForTurn,
   permissionSummary,
   createTickFilter,
@@ -383,7 +384,37 @@ test('prepareAgentInput routes a fresh Laravel + Vue + Inertia + Tailwind projec
 
 test('scaffold turns receive a larger tool-iteration budget without changing ordinary turns', () => {
   assert.equal(maxIterationsForTurn({ scaffoldSession: true }), 60);
+  assert.equal(maxIterationsForTurn({ featureSession: true }), 60);
   assert.equal(maxIterationsForTurn({ scaffoldSession: false }), undefined);
+});
+
+test('explicit CRUD requests keep completion protection without a scaffold dispatch', () => {
+  const task = `CRUD feature for "Projects" — a project has a name, description, status (enum:
+active/archived), and a due_date. Include index/create/edit/show Inertia pages,
+a FormRequest, an API resource, and a Pest feature test. Verify the build passes.`;
+  assert.deepEqual(completionSessionForTask(task, false), {
+    active: true,
+    featureName: 'Project',
+    landingPage: false,
+  });
+  assert.deepEqual(completionSessionForTask('explain the Project model', false), {
+    active: false,
+    featureName: '',
+    landingPage: false,
+  });
+  assert.deepEqual(completionSessionForTask('build a CRUD feature for Orders in Express', false), {
+    active: false,
+    featureName: '',
+    landingPage: false,
+  });
+});
+
+test('scaffold completion protection preserves landing-page intent', () => {
+  assert.deepEqual(completionSessionForTask('create a fresh Laravel project with a landing page', true), {
+    active: true,
+    featureName: '',
+    landingPage: true,
+  });
 });
 
 test('prepareAgentInput does not route in-project feature requests to scaffold', () => {
