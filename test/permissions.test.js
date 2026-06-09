@@ -31,6 +31,18 @@ test('always allows the tool for the rest of the session', async () => {
   assert.equal(asks, 1);
 });
 
+test("'always' (allow for the session) covers every risky tool, not just the approved one", async () => {
+  let asks = 0;
+  const p = createPermissions(async () => {
+    asks += 1;
+    return { choice: 'always' };
+  });
+  assert.equal((await p.check('run_command', { command: 'composer install' })).allowed, true);
+  assert.equal((await p.check('edit_file', { path: 'bootstrap/app.php', old_string: 'x', new_string: 'y' })).allowed, true);
+  assert.equal((await p.check('write_file', { path: 'vite.config.js', content: '' })).allowed, true);
+  assert.equal(asks, 1); // one "allow for this session" stops all further prompts
+});
+
 test('denial feedback is passed through', async () => {
   const perms = createPermissions(async () => ({ choice: 'no', feedback: 'use a backup folder instead' }));
   assert.deepEqual(await perms.check('run_command', { command: 'rm x' }), {

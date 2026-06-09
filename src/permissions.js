@@ -9,8 +9,8 @@ import { normalizeMode } from './modes.js';
 const FILE_TOOLS = new Set(['write_file', 'edit_file']);
 
 export function createPermissions(ask, getMode = () => 'permission') {
-  const alwaysAllowed = new Set();
-  const allowedPaths = new Set(); // a grant for a file covers all later writes to that file this session
+  let allowAllSession = false; // "allow for this session" stops all later prompts this session
+  const allowedPaths = new Set(); // an "allow once" on a file covers later writes to that same file
   return {
     async check(toolName, args) {
       if (!RISKY.has(toolName)) return { allowed: true };
@@ -22,13 +22,12 @@ export function createPermissions(ask, getMode = () => 'permission') {
           feedback: 'Plan mode is read-only. Switch to Permission or Auto mode before implementation.',
         };
       }
-      if (alwaysAllowed.has(toolName)) return { allowed: true };
+      if (allowAllSession) return { allowed: true };
       const filePath = FILE_TOOLS.has(toolName) && typeof args?.path === 'string' ? args.path : null;
       if (filePath && allowedPaths.has(filePath)) return { allowed: true };
       const answer = (await ask(toolName, args)) ?? {};
       if (answer.choice === 'always') {
-        alwaysAllowed.add(toolName);
-        if (filePath) allowedPaths.add(filePath);
+        allowAllSession = true;
         return { allowed: true };
       }
       if (answer.choice === 'yes') {
