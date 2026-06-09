@@ -101,8 +101,14 @@ export function buildInputPrompt(cwd) {
 }
 
 export function prepareAgentInput(input) {
+  // A scaffold request is a creation verb + "laravel" + "project", tolerating
+  // stack words in between ("a fresh Laravel + Vue 3 + Inertia + Tailwind
+  // project"), OR a bare "fresh/new laravel ... project". The creation verb (and
+  // the \s+ after it) keeps in-project feature requests like "add a controller
+  // to the Laravel project" from matching.
   const scaffoldIntent =
-    /\b(?:fresh\s+laravel\s+project|create\s+(?:a\s+)?(?:fresh\s+)?laravel\s+project)\b/i.test(input);
+    /\b(?:create|start|build|scaffold|generate|make|set\s*up|spin\s*up|bootstrap)\s+(?:an?\s+)?(?:fresh\s+|new\s+|brand[\s-]?new\s+)?laravel\b[^.!?\n]{0,80}?\bproject\b/i.test(input) ||
+    /\b(?:fresh|new)\s+laravel\b[^.!?\n]{0,80}?\bproject\b/i.test(input);
   const routed = routeAgentInput(scaffoldIntent && !input.trimStart().startsWith('@') ? `@scaffold ${input}` : input);
   if (!routed.matched) return { input, announcement: '', error: '' };
   if (routed.error) return { input: '', announcement: '', error: routed.error };

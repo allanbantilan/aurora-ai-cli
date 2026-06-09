@@ -371,6 +371,19 @@ test('prepareAgentInput auto-routes fresh framework project requests to scaffold
   assert.match(routed.input, /make it a landing page/);
 });
 
+test('prepareAgentInput routes a fresh Laravel + Vue + Inertia + Tailwind project request to scaffold', () => {
+  const routed = prepareAgentInput(
+    'create a fresh Laravel + Vue 3 + Inertia + Tailwind project, then build a CRUD feature for Projects'
+  );
+  assert.match(routed.announcement, /◆ @scaffold dispatched/);
+  assert.match(routed.input, /composer create-project laravel\/laravel \./);
+});
+
+test('prepareAgentInput does not route in-project feature requests to scaffold', () => {
+  assert.equal(prepareAgentInput('add a controller to the Laravel project').announcement, '');
+  assert.equal(prepareAgentInput('create a Vue component for the dashboard').announcement, '');
+});
+
 test('prepareAgentInput does not route non-Laravel projects to the Laravel scaffold agent', () => {
   assert.deepEqual(prepareAgentInput('create a React project'), {
     input: 'create a React project',
