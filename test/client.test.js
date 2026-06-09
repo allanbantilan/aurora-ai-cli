@@ -35,6 +35,33 @@ test('keeps only free models with tool support', () => {
   assert.deepEqual(out, [{ id: 'free/tools-model', name: 'Free Tools', context: 32000 }]);
 });
 
+test('ranks preferred tool-trained coder models first and retains stable fallbacks', () => {
+  const model = (id) => ({
+    id,
+    name: id,
+    context_length: 32000,
+    pricing: { prompt: '0', completion: '0' },
+    supported_parameters: ['tools'],
+  });
+  const out = filterFreeToolModels([
+    model('general/first'),
+    model('coder/deepseek-coder-v2'),
+    model('general/second'),
+    model('coder/qwen3-coder'),
+    model('coder/devstral-small'),
+    model('coder/qwen2.5-coder'),
+  ]);
+
+  assert.deepEqual(out.map(({ id }) => id), [
+    'coder/qwen3-coder',
+    'coder/qwen2.5-coder',
+    'coder/devstral-small',
+    'coder/deepseek-coder-v2',
+    'general/first',
+    'general/second',
+  ]);
+});
+
 test('withRetry retries 429 then succeeds', async () => {
   let calls = 0;
   const result = await withRetry(async () => {

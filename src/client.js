@@ -2,6 +2,13 @@ import OpenAI from 'openai';
 
 const BASE_URL = 'https://openrouter.ai/api/v1';
 
+export const PREFERRED_TOOL_MODEL_PATTERNS = [
+  /qwen.*coder/i,
+  /devstral/i,
+  /codestral/i,
+  /deepseek.*coder/i,
+];
+
 export function createClient(apiKey) {
   // maxRetries: 0 — withRetry below is the only retry layer; the SDK's silent
   // internal retries would otherwise multiply the wait with no user feedback.
@@ -17,7 +24,14 @@ export function filterFreeToolModels(models) {
         m.pricing?.completion === '0' &&
         (m.supported_parameters || []).includes('tools')
     )
-    .map((m) => ({ id: m.id, name: m.name, context: m.context_length }));
+    .map((m, index) => ({ id: m.id, name: m.name, context: m.context_length, index }))
+    .sort((a, b) => preferredModelRank(a.id) - preferredModelRank(b.id) || a.index - b.index)
+    .map(({ index: _index, ...model }) => model);
+}
+
+function preferredModelRank(id) {
+  const rank = PREFERRED_TOOL_MODEL_PATTERNS.findIndex((pattern) => pattern.test(id));
+  return rank < 0 ? PREFERRED_TOOL_MODEL_PATTERNS.length : rank;
 }
 
 export async function fetchFreeToolModels() {
