@@ -9,6 +9,7 @@ export const definition = {
       'Replace one exact unique string in an existing file. Use when: making a focused change after reading live content. Prefer this tool over sed or Perl shell edits. Example: replace one function body.',
     parameters: {
       type: 'object',
+      additionalProperties: false,
       properties: {
         path: { type: 'string', description: 'File path relative to the working directory. Example: "src/app.js".' },
         old_string: { type: 'string', description: 'Exact text to replace (must be unique in the file). Example: "const enabled = false;".' },

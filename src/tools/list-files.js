@@ -25,6 +25,7 @@ export const definition = {
     description: 'Locate and enumerate files by glob or detected category. Use when: finding paths without searching contents. Prefer this tool over ls, dir, or find. Example: list Laravel controllers or **/*.js.',
     parameters: {
       type: 'object',
+      additionalProperties: false,
       properties: {
         pattern: { type: 'string', description: 'Glob pattern relative to the working directory. Example: "src/**/*.js".' },
         category: {

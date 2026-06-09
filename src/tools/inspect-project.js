@@ -7,6 +7,7 @@ export const definition = {
     description: 'Detect the confirmed project stack and major areas. Use when: starting work that depends on framework or project structure. Prefer this tool over guessing from paths or shell inspection. Example: inspect the current project before Laravel-specific edits.',
     parameters: {
       type: 'object',
+      additionalProperties: false,
       properties: {},
       required: [],
     },

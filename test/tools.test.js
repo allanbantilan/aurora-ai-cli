@@ -11,7 +11,7 @@ import * as editFile from '../src/tools/edit-file.js';
 import * as runCommand from '../src/tools/run-command.js';
 import * as inspectProjectTool from '../src/tools/inspect-project.js';
 import { inspectProject } from '../src/project-inspection.js';
-import { definitions } from '../src/tools/index.js';
+import { definitions, executeTool } from '../src/tools/index.js';
 
 function tmpProject() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jai-tools-'));
@@ -101,6 +101,7 @@ test('inspect_project is registered as a tool', () => {
 test('every tool schema gives weak models usage guidance and examples', () => {
   assert.equal(definitions.length, 7);
   for (const { function: fn } of definitions) {
+    assert.equal(fn.parameters.additionalProperties, false, `${fn.name} must reject unexpected properties`);
     assert.match(fn.description, /Use when:/, `${fn.name} needs when-to-use guidance`);
     assert.match(fn.description, /Prefer this tool/, `${fn.name} needs dedicated-tool preference guidance`);
     assert.match(fn.description, /Example:/, `${fn.name} needs a canonical example`);
@@ -418,4 +419,13 @@ test('run_command does not hang when the child waits on stdin', async () => {
     'node -e "process.stdin.resume();process.stdin.on(\'end\',()=>process.exit(0));setTimeout(()=>process.exit(2),800)"';
   const out = await runCommand.execute({ command }, dir, { timeoutMs: 4000 });
   assert.equal(out, '(no output)');
+});
+
+test('tool result truncation preserves the beginning and final error', async () => {
+  const result = await executeTool('run_command', {
+    command: `node -e "console.log('BEGIN'); console.log('x'.repeat(10000)); console.error('FINAL ERROR')"`,
+  }, tmpProject());
+  assert.match(result, /BEGIN/);
+  assert.match(result, /FINAL ERROR/);
+  assert.match(result, /showing beginning and end/);
 });

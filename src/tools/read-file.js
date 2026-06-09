@@ -11,6 +11,7 @@ export const definition = {
     description: 'Read one file with line numbers. Use when: inspecting exact live content before editing or verifying a deliverable. Prefer this tool over cat, type, or Get-Content. Example: read src/app.js lines 20-60.',
     parameters: {
       type: 'object',
+      additionalProperties: false,
       properties: {
         path: { type: 'string', description: 'File path relative to the working directory. Example: "src/app.js".' },
         start_line: { type: 'integer', description: 'First line to read, inclusive (default 1). Example: 20.' },

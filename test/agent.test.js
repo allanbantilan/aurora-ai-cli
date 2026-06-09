@@ -178,6 +178,38 @@ test('onToolEnd fires with name, args and result after execution', async () => {
   assert.equal(calls[0].result, 'Wrote a.txt (2 chars)');
 });
 
+test('schema-invalid tool arguments become an error before permission checks', async () => {
+  const client = fakeClient([
+    toolCallChunks('c1', 'read_file', '{"path":42}'),
+    [chunk({ content: 'corrected' })],
+  ]);
+  let checked = false;
+  let executed = false;
+  const definitions = [{
+    type: 'function',
+    function: {
+      name: 'read_file',
+      parameters: {
+        type: 'object',
+        additionalProperties: false,
+        properties: { path: { type: 'string' } },
+        required: ['path'],
+      },
+    },
+  }];
+  const messages = [{ role: 'user', content: 'read it' }];
+  await runTurn({
+    client,
+    models: ['m'],
+    messages,
+    tools: { definitions, executeTool: async () => { executed = true; } },
+    permissions: { check: async () => { checked = true; return { allowed: true }; } },
+  });
+  assert.equal(checked, false);
+  assert.equal(executed, false);
+  assert.match(messages.find((m) => m.role === 'tool').content, /must be a string/);
+});
+
 test('tool progress is forwarded while a tool executes', async () => {
   const progress = [];
   const client = fakeClient([
@@ -508,4 +540,20 @@ test('completion requests opt in to usage reporting via stream_options', async (
     permissions: allowAll,
   });
   assert.deepEqual(captured.stream_options, { include_usage: true });
+  assert.deepEqual(captured.provider, { require_parameters: true });
+  assert.equal(captured.parallel_tool_calls, false);
+});
+
+test('strict privacy denies provider data collection', async () => {
+  let captured;
+  const client = { chat: { completions: { create: async (params) => { captured = params; return textStream('ok'); } } } };
+  await runTurn({
+    client,
+    models: ['m'],
+    messages: [{ role: 'user', content: 'x' }],
+    tools: fakeTools(async () => 'unused'),
+    permissions: allowAll,
+    strictPrivacy: true,
+  });
+  assert.deepEqual(captured.provider, { require_parameters: true, data_collection: 'deny' });
 });

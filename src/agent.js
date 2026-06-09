@@ -1,4 +1,5 @@
 import { withRetry } from './client.js';
+import { validateToolArguments } from './tool-validation.js';
 
 const MAX_ITERATIONS = 15;
 
@@ -32,6 +33,7 @@ export async function runTurn({
   maxIterations = MAX_ITERATIONS,
   retryDelayMs = 2000,
   stallMs = 30_000,
+  strictPrivacy = false,
 }) {
   let activeIndex = 0;
 
@@ -45,7 +47,7 @@ export async function runTurn({
       try {
         return await streamCompletion(
           client, models[activeIndex], messages, tools.definitions,
-          tappedOnText, onReasoning, onRetry, retryDelayMs, stallMs
+          tappedOnText, onReasoning, onRetry, retryDelayMs, stallMs, strictPrivacy
         );
       } catch (err) {
         const availability = err.status === 429 || err.status >= 500 || err.stalled;
@@ -76,6 +78,11 @@ export async function runTurn({
         args = JSON.parse(call.function.arguments || '{}');
       } catch {
         result = 'Error: invalid JSON in tool arguments';
+      }
+      if (result === undefined) {
+        const definition = tools.definitions.find((item) => item.function?.name === name);
+        const validationErrors = validateToolArguments(definition?.function?.parameters, args);
+        if (validationErrors.length) result = `Error: invalid tool arguments: ${validationErrors.join('; ')}`;
       }
       if (result === undefined) {
         onToolStart?.(name, args);
@@ -110,9 +117,17 @@ function nextWithStall(it, stallMs, model) {
 }
 
 /** Stream one completion, accumulating text and tool-call deltas. */
-async function streamCompletion(client, model, messages, definitions, onText, onReasoning, onRetry, retryDelayMs = 2000, stallMs = 30_000) {
+async function streamCompletion(client, model, messages, definitions, onText, onReasoning, onRetry, retryDelayMs = 2000, stallMs = 30_000, strictPrivacy = false) {
   const stream = await withRetry(
-    () => client.chat.completions.create({ model, messages, tools: definitions, stream: true, stream_options: { include_usage: true } }),
+    () => client.chat.completions.create({
+      model,
+      messages,
+      tools: definitions,
+      stream: true,
+      stream_options: { include_usage: true },
+      provider: { require_parameters: true, ...(strictPrivacy ? { data_collection: 'deny' } : {}) },
+      parallel_tool_calls: false,
+    }),
     2,
     retryDelayMs,
     onRetry

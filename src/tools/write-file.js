@@ -11,6 +11,7 @@ export const definition = {
     description: 'Create or fully overwrite a file. Use when: writing complete new content or intentionally replacing the whole file. Prefer this tool over shell redirection or heredocs. Example: create src/config.js.',
     parameters: {
       type: 'object',
+      additionalProperties: false,
       properties: {
         path: { type: 'string', description: 'File path relative to the working directory. Example: "src/config.js".' },
         content: { type: 'string', description: 'Full file content to write. Example: "export const enabled = true;\\n".' },

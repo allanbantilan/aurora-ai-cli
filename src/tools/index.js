@@ -48,7 +48,9 @@ export function previewTool(name, args) {
 }
 
 function truncate(text, max = MAX_RESULT_CHARS) {
-  return text.length > max
-    ? `${text.slice(0, max)}\n...[truncated ${text.length - max} chars]`
-    : text;
+  if (text.length <= max) return text;
+  const marker = `\n...[truncated ${text.length - max} chars; showing beginning and end]...\n`;
+  const head = Math.floor((max - marker.length) * 0.4);
+  const tail = max - marker.length - head;
+  return `${text.slice(0, head)}${marker}${text.slice(-tail)}`;
 }

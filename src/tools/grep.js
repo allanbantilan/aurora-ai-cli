@@ -52,6 +52,7 @@ export const definition = {
     description: 'Search file contents with a regex or preset. Use when: locating symbols, routes, or text inside files. Prefer this tool over shell grep or rg. Example: search for ProductController or use the routes preset.',
     parameters: {
       type: 'object',
+      additionalProperties: false,
       properties: {
         pattern: { type: 'string', description: 'JavaScript regex pattern to search for. Example: "\\bclass\\s+Product".' },
         glob: { type: 'string', description: 'Limit search to files matching this glob (default all files). Example: "app/**/*.php".' },
