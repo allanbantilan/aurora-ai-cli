@@ -387,6 +387,28 @@ test('run_command reports failure without throwing', async () => {
   assert.match(out, /Command failed/);
 });
 
+test('isServerCommand flags long-running dev servers but not builds or one-shot commands', () => {
+  for (const c of ['npm run dev', 'pnpm dev', 'yarn start', 'vite', 'php artisan serve', 'npm run serve']) {
+    assert.equal(runCommand.isServerCommand(c), true, c);
+  }
+  for (const c of ['npm run build', 'vite build', 'npm test', 'composer install', 'php artisan migrate']) {
+    assert.equal(runCommand.isServerCommand(c), false, c);
+  }
+});
+
+test('run_command boot-checks a dev server instead of hanging until timeout', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'aurora-srv-'));
+  fs.writeFileSync(
+    path.join(dir, 'package.json'),
+    JSON.stringify({ scripts: { dev: 'node -e "console.log(\'ready\'); setInterval(() => {}, 1000)"' } })
+  );
+  const started = Date.now();
+  const out = await runCommand.execute({ command: 'npm run dev' }, dir, { timeoutMs: 3000 });
+  assert.ok(Date.now() - started < 20000, 'must not hang for the full timeout');
+  assert.doesNotMatch(out, /Command failed/i);
+  assert.match(out, /server|boot/i);
+});
+
 test('run_command does not hang when the child waits on stdin', async () => {
   // Child stdin must be closed so interactive prompts (npm/npx confirmations)
   // see EOF and resolve instead of blocking the turn for the full timeout.
