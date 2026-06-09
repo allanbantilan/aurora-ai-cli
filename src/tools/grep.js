@@ -49,17 +49,17 @@ export const definition = {
   type: 'function',
   function: {
     name: 'grep',
-    description: 'Search file contents with a regex or a PHP/Laravel/Vue preset. Returns "path:line: text" matches.',
+    description: 'Search file contents with a regex or preset. Use when: locating symbols, routes, or text inside files. Prefer this tool over shell grep or rg. Example: search for ProductController or use the routes preset.',
     parameters: {
       type: 'object',
       properties: {
-        pattern: { type: 'string', description: 'JavaScript regex pattern to search for' },
-        glob: { type: 'string', description: 'Limit search to files matching this glob (default all files)' },
-        regex_flags: { type: 'string', description: 'JavaScript regex flags, e.g. "i" or "gm"' },
+        pattern: { type: 'string', description: 'JavaScript regex pattern to search for. Example: "\\bclass\\s+Product".' },
+        glob: { type: 'string', description: 'Limit search to files matching this glob (default all files). Example: "app/**/*.php".' },
+        regex_flags: { type: 'string', description: 'JavaScript regex flags. Example: "i".' },
         preset: {
           type: 'string',
           enum: Object.keys(PRESETS),
-          description: 'Common PHP/Laravel/Vue search preset; Laravel presets require detected Laravel',
+          description: 'Common PHP/Laravel/Vue search preset; Laravel presets require detected Laravel. Example: "routes".',
         },
       },
       required: [],

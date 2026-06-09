@@ -98,6 +98,25 @@ test('inspect_project is registered as a tool', () => {
   assert.ok(definitions.some((tool) => tool.function.name === 'inspect_project'));
 });
 
+test('every tool schema gives weak models usage guidance and examples', () => {
+  assert.equal(definitions.length, 7);
+  for (const { function: fn } of definitions) {
+    assert.match(fn.description, /Use when:/, `${fn.name} needs when-to-use guidance`);
+    assert.match(fn.description, /Prefer this tool/, `${fn.name} needs dedicated-tool preference guidance`);
+    assert.match(fn.description, /Example:/, `${fn.name} needs a canonical example`);
+    for (const [name, schema] of Object.entries(fn.parameters.properties)) {
+      assert.match(schema.description, /Example:/, `${fn.name}.${name} needs an example`);
+    }
+  }
+});
+
+test('discovery tool schemas clearly distinguish stack, path, and content discovery', () => {
+  const byName = new Map(definitions.map(({ function: fn }) => [fn.name, fn.description]));
+  assert.match(byName.get('inspect_project'), /detect.*stack/i);
+  assert.match(byName.get('list_files'), /locate|enumerate/i);
+  assert.match(byName.get('grep'), /search.*contents/i);
+});
+
 test('read_file returns numbered lines', () => {
   const dir = tmpProject();
   const out = readFile.execute({ path: 'src/app.js' }, dir);

@@ -8,13 +8,13 @@ export const definition = {
   type: 'function',
   function: {
     name: 'read_file',
-    description: 'Read a file and return its content with line numbers.',
+    description: 'Read one file with line numbers. Use when: inspecting exact live content before editing or verifying a deliverable. Prefer this tool over cat, type, or Get-Content. Example: read src/app.js lines 20-60.',
     parameters: {
       type: 'object',
       properties: {
-        path: { type: 'string', description: 'File path relative to the working directory' },
-        start_line: { type: 'integer', description: 'First line to read, inclusive (default 1)' },
-        end_line: { type: 'integer', description: 'Last line to read, inclusive (default end of file)' },
+        path: { type: 'string', description: 'File path relative to the working directory. Example: "src/app.js".' },
+        start_line: { type: 'integer', description: 'First line to read, inclusive (default 1). Example: 20.' },
+        end_line: { type: 'integer', description: 'Last line to read, inclusive (default end of file). Example: 60.' },
       },
       required: ['path'],
     },

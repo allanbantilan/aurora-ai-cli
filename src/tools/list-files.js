@@ -22,15 +22,15 @@ export const definition = {
   type: 'function',
   function: {
     name: 'list_files',
-    description: 'List files matching a glob pattern or a detected Laravel/Vue category.',
+    description: 'Locate and enumerate files by glob or detected category. Use when: finding paths without searching contents. Prefer this tool over ls, dir, or find. Example: list Laravel controllers or **/*.js.',
     parameters: {
       type: 'object',
       properties: {
-        pattern: { type: 'string', description: 'Glob pattern relative to the working directory' },
+        pattern: { type: 'string', description: 'Glob pattern relative to the working directory. Example: "src/**/*.js".' },
         category: {
           type: 'string',
           enum: Object.keys(CATEGORIES),
-          description: 'Laravel/Vue file category; requires a detected Laravel project',
+          description: 'Laravel/Vue file category; requires a detected Laravel project. Example: "controllers".',
         },
       },
       required: [],

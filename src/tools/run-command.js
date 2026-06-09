@@ -6,11 +6,11 @@ export const definition = {
   type: 'function',
   function: {
     name: 'run_command',
-    description: 'Run a shell command in the working directory. Reports live output progress. 10 minute timeout.',
+    description: 'Run a shell command in the working directory with live progress and timeout. Use when: executing builds, tests, framework CLIs, or literal user commands. Prefer this tool for commands, but prefer dedicated file tools for reading, searching, or editing. Example: npm test.',
     parameters: {
       type: 'object',
       properties: {
-        command: { type: 'string', description: 'The shell command to run' },
+        command: { type: 'string', description: 'The shell command to run. Example: "npm test".' },
       },
       required: ['command'],
     },
