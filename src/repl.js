@@ -326,22 +326,32 @@ function collectPageText(cwd) {
   return files.map(readTextOrEmpty).join('\n');
 }
 
-export function scaffoldCompletionGaps(cwd, successfulCommands) {
+/** True when a scaffold request explicitly asks for a landing/marketing/home page. */
+export function isLandingPageScaffold(task) {
+  return /\blanding\b|\bmarketing\s+(?:page|site)\b|\bsplash\s+page\b|\bhome\s*page\b|\bhomepage\b/i.test(String(task));
+}
+
+export function scaffoldCompletionGaps(cwd, successfulCommands, { landingPage = true } = {}) {
   const gaps = [];
-  const route = readTextOrEmpty(path.join(cwd, 'routes', 'web.php'));
-  const pages = collectPageText(cwd);
+  // Universal: every scaffold must install Laravel and end on a passing build.
   if (!fs.existsSync(path.join(cwd, 'artisan'))) gaps.push('Install Laravel before building the feature.');
   if (!successfulCommands.some((command) => /\bphp\s+artisan\s+--version\b/i.test(command))) {
     gaps.push('Verify Laravel with php artisan --version.');
   }
-  if (!/Route::get\(\s*['"]\/['"]/i.test(route) || !/->name\(\s*['"][^'"]+['"]\s*\)/i.test(route)) {
-    gaps.push('Add a named landing route in routes/web.php.');
-  }
-  if (!['hero', 'features', 'cta', 'footer'].every((section) => new RegExp(section, 'i').test(pages))) {
-    gaps.push('Create a landing page with hero, features, CTA, and footer sections.');
-  }
-  if (!/\bclass\s*=\s*["'][^"']*(?:flex|grid|bg-|text-|px-|py-|mx-|my-|max-w-)/i.test(pages)) {
-    gaps.push('Add Tailwind utility classes to the landing page.');
+  // Landing-page-specific: only enforced when the request is actually a landing
+  // page, so a CRUD/feature scaffold is not forced to grow a marketing page.
+  if (landingPage) {
+    const route = readTextOrEmpty(path.join(cwd, 'routes', 'web.php'));
+    const pages = collectPageText(cwd);
+    if (!/Route::get\(\s*['"]\/['"]/i.test(route) || !/->name\(\s*['"][^'"]+['"]\s*\)/i.test(route)) {
+      gaps.push('Add a named landing route in routes/web.php.');
+    }
+    if (!['hero', 'features', 'cta', 'footer'].every((section) => new RegExp(section, 'i').test(pages))) {
+      gaps.push('Create a landing page with hero, features, CTA, and footer sections.');
+    }
+    if (!/\bclass\s*=\s*["'][^"']*(?:flex|grid|bg-|text-|px-|py-|mx-|my-|max-w-)/i.test(pages)) {
+      gaps.push('Add Tailwind utility classes to the landing page.');
+    }
   }
   if (!successfulCommands.some((command) => /\bnpm\s+run\s+build\b/i.test(command))) {
     gaps.push('Run npm run build successfully.');
@@ -953,7 +963,9 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
             continue;
           }
           if (scaffoldSession) {
-            const gaps = scaffoldCompletionGaps(process.cwd(), successfulCommands);
+            const gaps = scaffoldCompletionGaps(process.cwd(), successfulCommands, {
+              landingPage: isLandingPageScaffold(learningInput),
+            });
             if (gaps.length) {
               input = `The scaffold task is not complete. Continue working and satisfy every missing requirement:\n- ${gaps.join('\n- ')}`;
               continue;
