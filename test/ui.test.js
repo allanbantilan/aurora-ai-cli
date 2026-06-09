@@ -17,10 +17,68 @@ import {
   statusLine,
   modelCategory,
   formatToolPreview,
+  formatToolActivityGroup,
+  isGroupableToolActivity,
   formatCtx,
   renderPlan,
   renderDoneSummary,
 } from '../src/ui.js';
+
+test('formatToolActivityGroup renders compact grouped counts', () => {
+  const calls = [
+    { name: 'grep', args: { pattern: 'inventory count' } },
+    { name: 'grep', args: { pattern: 'CE field' } },
+    { name: 'read_file', args: { path: 'app/Http/Controllers/Api/PosmRequestController.php' } },
+  ];
+
+  assert.equal(
+    formatToolActivityGroup(calls, { expanded: false, interactive: true, colors: false }),
+    'Searched for 2 patterns, read 1 file (ctrl+o to expand)'
+  );
+});
+
+test('formatToolActivityGroup pluralizes scan and inspection categories', () => {
+  const calls = [
+    { name: 'list_files', args: { path: 'src' } },
+    { name: 'list_files', args: { path: 'test' } },
+    { name: 'inspect_project', args: {} },
+  ];
+
+  assert.equal(
+    formatToolActivityGroup(calls, { expanded: false, interactive: true, colors: false }),
+    'Scanned 2 file sets, inspected 1 project (ctrl+o to expand)'
+  );
+});
+
+test('formatToolActivityGroup renders expanded targets', () => {
+  const calls = [
+    { name: 'grep', args: { pattern: 'inventory count' } },
+    { name: 'read_file', args: { path: 'app/Http/Controllers/Api/PosmRequestController.php' } },
+  ];
+  const out = formatToolActivityGroup(calls, { expanded: true, interactive: true, ascii: false, colors: false });
+
+  assert.match(out, /^Searched for 1 pattern, read 1 file \(ctrl\+o to collapse\)/);
+  assert.match(out, /  ⎿ grep: "inventory count"/);
+  assert.match(out, /  ⎿ app\/Http\/Controllers\/Api\/PosmRequestController\.php/);
+});
+
+test('formatToolActivityGroup non-interactive output expands with ASCII details and no hint', () => {
+  const out = formatToolActivityGroup(
+    [{ name: 'list_files', args: { path: 'src' } }],
+    { expanded: true, interactive: false, colors: false }
+  );
+
+  assert.equal(out, 'Scanned 1 file set\n  - list files: src');
+});
+
+test('isGroupableToolActivity recognizes only read-only discovery tools', () => {
+  for (const name of ['grep', 'read_file', 'list_files', 'inspect_project']) {
+    assert.equal(isGroupableToolActivity(name), true);
+  }
+  for (const name of ['write_file', 'edit_file', 'run_command', 'mystery']) {
+    assert.equal(isGroupableToolActivity(name), false);
+  }
+});
 
 test('promptLabel shows the cwd folder name', () => {
   const label = promptLabel(path.join('C:', 'projects', 'my-app'));

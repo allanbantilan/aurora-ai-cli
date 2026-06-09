@@ -31,6 +31,57 @@ export function promptLabel(cwd = process.cwd()) {
   return `${cyan(path.basename(cwd))} > `;
 }
 
+const TOOL_ACTIVITY = {
+  grep: { verb: 'searched for', singular: 'pattern', plural: 'patterns' },
+  read_file: { verb: 'read', singular: 'file', plural: 'files' },
+  list_files: { verb: 'scanned', singular: 'file set', plural: 'file sets' },
+  inspect_project: { verb: 'inspected', singular: 'project', plural: 'projects' },
+};
+
+export function isGroupableToolActivity(name) {
+  return Object.hasOwn(TOOL_ACTIVITY, name);
+}
+
+function toolActivityTarget({ name, args = {} }) {
+  if (name === 'grep') return `grep: ${JSON.stringify(String(args.pattern ?? ''))}`;
+  if (name === 'read_file') return String(args.path ?? 'unknown file');
+  if (name === 'list_files') return `list files: ${String(args.path ?? '.')}`;
+  if (name === 'inspect_project') return `inspect project: ${String(args.path ?? '.')}`;
+  return name;
+}
+
+export function formatToolActivityGroup(
+  calls,
+  {
+    expanded = false,
+    interactive = interactiveEnabled,
+    ascii = legacyConhost || !interactive,
+  } = {}
+) {
+  const counts = new Map();
+  for (const { name } of calls ?? []) {
+    if (isGroupableToolActivity(name)) counts.set(name, (counts.get(name) ?? 0) + 1);
+  }
+  const phrases = Object.entries(TOOL_ACTIVITY)
+    .filter(([name]) => counts.has(name))
+    .map(([name, category]) => {
+      const count = counts.get(name);
+      return `${category.verb} ${count} ${count === 1 ? category.singular : category.plural}`;
+    });
+  if (!phrases.length) return '';
+
+  phrases[0] = phrases[0][0].toUpperCase() + phrases[0].slice(1);
+  const hint = interactive ? ` (ctrl+o to ${expanded ? 'collapse' : 'expand'})` : '';
+  const summary = phrases.join(', ') + hint;
+  if (!expanded) return summary;
+
+  const marker = ascii ? '-' : '⎿';
+  const detail = (calls ?? [])
+    .filter(({ name }) => isGroupableToolActivity(name))
+    .map((call) => `  ${marker} ${toolActivityTarget(call)}`);
+  return [summary, ...detail].join('\n');
+}
+
 // legacy conhost often lacks Unicode glyphs; Windows Terminal/VS Code set env markers
 export const legacyConhost =
   process.platform === 'win32' && !process.env.WT_SESSION && !process.env.TERM_PROGRAM;
