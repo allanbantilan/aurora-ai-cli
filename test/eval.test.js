@@ -7,10 +7,11 @@ test('offline eval fixtures run deterministically with real tools', async () => 
   const fixtures = loadEvalFixtures(path.join(process.cwd(), 'test', 'evals'));
   const results = await Promise.all(fixtures.map((fixture) => runEvalFixture(fixture)));
 
-  assert.equal(results.length, 5);
+  assert.equal(results.length, 6);
   for (const result of results) assert.equal(result.passed, true, `${result.name}: ${result.failures.join('\n')}`);
   assert.deepEqual(results.find(({ name }) => name === 'create-and-verify-file').tools, ['write_file', 'read_file']);
   assert.deepEqual(results.find(({ name }) => name === 'eloquent-soft-delete-scope').skills, ['eloquent']);
+  assert.deepEqual(results.find(({ name }) => name === 'generic-database-models').skills, []);
 });
 
 test('verification expectation fails when the check occurs before modification', async () => {

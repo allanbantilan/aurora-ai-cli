@@ -1,6 +1,6 @@
 ---
 name: laravel-structure
-description: Laravel Vue Inertia project structure middleware pages components routes configuration
+description: Design Laravel Vue Inertia project structure across middleware, pages, components, routes, and configuration.
 implicit: true
 ---
 

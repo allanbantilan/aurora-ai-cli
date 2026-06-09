@@ -1,6 +1,6 @@
 ---
 name: tailwind
-description: Tailwind utility classes responsive layout dark mode accessible frontend styling
+description: Create accessible frontend styling with Tailwind utility classes, responsive layouts, and dark mode.
 implicit: true
 ---
 

@@ -1,6 +1,6 @@
 ---
 name: inertia-vue
-description: Inertia Vue pages props useForm Ziggy script setup composables Pinia Vite
+description: Build Inertia Vue pages with props, useForm, Ziggy, script setup, composables, Pinia, and Vite.
 implicit: true
 ---
 

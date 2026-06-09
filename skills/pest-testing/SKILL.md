@@ -1,6 +1,6 @@
 ---
 name: pest-testing
-description: Pest PHPUnit Vitest tests feature coverage fakes database assertions
+description: Test applications with Pest, PHPUnit, Vitest, feature coverage, fakes, and database assertions.
 implicit: true
 ---
 

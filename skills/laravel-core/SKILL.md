@@ -1,6 +1,6 @@
 ---
 name: laravel-core
-description: Laravel controllers FormRequests services actions routes policies authentication artisan scaffolding
+description: Implement Laravel controllers, FormRequests, services, actions, routes, policies, authentication, and Artisan scaffolding.
 implicit: true
 ---
 

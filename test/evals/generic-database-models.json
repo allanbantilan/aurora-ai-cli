@@ -1,0 +1,10 @@
+{
+  "name": "generic-database-models",
+  "prompt": "Improve database models and query performance for a reporting service.",
+  "responses": [
+    { "content": "Define the reporting entities and their relationships based on the service requirements." }
+  ],
+  "expect": {
+    "skills": []
+  }
+}

@@ -70,6 +70,17 @@ test('bundled Eloquent skill activates implicitly and explicitly', () => {
   assert.deepEqual(activateSkills('write a Node.js CLI parser', [skill]).selected, []);
 });
 
+test('bundled skill descriptions are readable sentences', () => {
+  const skills = discoverSkills();
+  const bundled = skills.filter(({ scope }) => scope === 'bundled');
+
+  assert.equal(bundled.length, 7);
+  for (const skill of bundled) {
+    assert.match(skill.description, /^(?:Build|Create|Design|Implement|Secure|Test|Use)\b/);
+    assert.match(skill.description, /\.$/);
+  }
+});
+
 test('discoverSkills ignores malformed definitions safely', () => {
   const { root, cwd, home, bundled } = fixture();
   skill(root, 'missing-description', 'name: missing-description');

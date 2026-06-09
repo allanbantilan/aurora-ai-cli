@@ -1,6 +1,6 @@
 ---
 name: laravel-security
-description: Laravel security validation authorization policies mass assignment XSS CSRF secrets
+description: Secure Laravel applications with validation, authorization, policies, mass-assignment protection, XSS and CSRF defenses, and secret handling.
 implicit: true
 ---
 

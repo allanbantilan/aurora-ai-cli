@@ -1,6 +1,6 @@
 ---
 name: eloquent
-description: Eloquent models migrations relationships scopes soft delete eager loading database performance
+description: Use Eloquent for model relationships, migrations, scopes, soft deletes, eager loading, and database performance.
 implicit: true
 ---
 
