@@ -87,6 +87,15 @@ export function createToolActivityGroup({
   };
 }
 
+export function createToolActivityToggleHandler(group, print = console.log) {
+  return (_str, key = {}) => {
+    if (!key.ctrl || key.name !== 'o') return false;
+    const expanded = group.toggle();
+    print(dim(`tool activity ${expanded ? 'expanded' : 'compact'} for future groups`));
+    return true;
+  };
+}
+
 export function buildInputPrompt(cwd) {
   return `${dim(cwd)} ${cyan('❯')} `;
 }
@@ -449,6 +458,17 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
   rl.on('close', () => process.exit(0));
 
   const spinner = createSpinner();
+  const activityGroup = createToolActivityGroup({
+    print: (text) => {
+      spinner.stop();
+      console.log(`\n${text}`);
+    },
+  });
+  const activityToggle = createToolActivityToggleHandler(activityGroup, (text) => {
+    spinner.stop();
+    console.log(text);
+  });
+  if (interactiveEnabled) process.stdin.on('keypress', activityToggle);
 
   async function pickPermissionMode(currentMode) {
     const selected = await selectMenu(rl, 'Select permission mode:', modeOptions());
@@ -813,6 +833,7 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
           onText: (t) => {
             assistantText += t;
             if (planningSession) return;
+            activityGroup.flush();
             spinner.stop();
             toolPayloadSuppressor(t);
           },
@@ -826,6 +847,7 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
             );
           },
           onToolStart: (name, args) => {
+            if (!isGroupableToolActivity(name)) activityGroup.flush();
             if (DIFF_TOOLS.has(name) && typeof args.path === 'string') {
               editSnapshot = readFileOrNull(args.path);
             }
@@ -861,6 +883,14 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
               console.log(`\n${red(result)}`);
               return resume();
             }
+            if (isGroupableToolActivity(name)) {
+              if (activityGroup.record(name, args, result)) return resume();
+              activityGroup.flush();
+              turnErrors += 1;
+              spinner.stop();
+              console.log(`\n${red(String(result))}`);
+              return resume();
+            }
             if (name === 'run_command' && typeof result === 'string' && !result.startsWith('User denied') && !result.startsWith('Error')) {
               successfulCommands.push(String(args.command ?? ''));
             }
@@ -888,6 +918,7 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
             saveModels(chain);
           },
         });
+        activityGroup.flush();
         spinner.stop();
 
         if (!planningSession) {
@@ -975,6 +1006,7 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
         input = formatPlanAnswers(await askPlanQuestions(plan.questions));
       }
     } catch (err) {
+      activityGroup.flush();
       const hint = err.status === 429 || err.status >= 500 ? ' — all models in your chain failed; try /model' : '';
       console.error(`\n${red(`[error] ${err.message}`)}${hint}`);
     } finally {
@@ -987,6 +1019,7 @@ export async function startRepl({ client, models, initialChain, saveModels }) {
     }
   }
 
+  if (interactiveEnabled) process.stdin.removeListener('keypress', activityToggle);
   rl.close();
 }
 

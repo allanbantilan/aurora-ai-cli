@@ -25,6 +25,7 @@ import {
   hasStructuredPlan,
   toolActivityLabel,
   createToolActivityGroup,
+  createToolActivityToggleHandler,
   commandProgressLabel,
   reasoningActivityLabel,
   scaffoldCompletionGaps,
@@ -87,6 +88,18 @@ test('createToolActivityGroup defaults non-interactive output to expanded', () =
   group.flush();
   assert.match(printed[0], /a\.js/);
   assert.doesNotMatch(printed[0], /ctrl\+o/);
+});
+
+test('createToolActivityToggleHandler toggles only ctrl+o and reports future mode', () => {
+  const notices = [];
+  const group = createToolActivityGroup({ interactive: true, print: () => {} });
+  const handle = createToolActivityToggleHandler(group, (text) => notices.push(text));
+
+  assert.equal(handle('x', { name: 'x' }), false);
+  assert.equal(group.expanded, false);
+  assert.equal(handle('', { ctrl: true, name: 'o' }), true);
+  assert.equal(group.expanded, true);
+  assert.match(notices[0], /expanded.*future groups/);
 });
 
 test('createEchoSuppressor drops an exact first-line echo of the user input', () => {
