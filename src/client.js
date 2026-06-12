@@ -1,5 +1,6 @@
 import OpenAI from 'openai';
 import { telemetryScore } from './telemetry.js';
+import { providers } from './providers/index.js';
 
 const BASE_URL = 'https://openrouter.ai/api/v1';
 
@@ -10,10 +11,24 @@ export const PREFERRED_TOOL_MODEL_PATTERNS = [
   /deepseek.*coder/i,
 ];
 
-export function createClient(apiKey) {
-  // maxRetries: 0 — withRetry below is the only retry layer; the SDK's silent
-  // internal retries would otherwise multiply the wait with no user feedback.
+/**
+ * Create client for a specific provider.
+ * Falls back to OpenRouter for backwards compatibility.
+ */
+export function createClient(apiKey, provider = 'openrouter') {
+  const providerInstance = providers[provider];
+  if (providerInstance) {
+    return providerInstance.createClient(apiKey);
+  }
+  // Fallback to OpenRouter
   return new OpenAI({ apiKey, baseURL: BASE_URL, maxRetries: 0 });
+}
+
+/**
+ * Create client from a provider instance.
+ */
+export function createClientFromProvider(provider, apiKey) {
+  return provider.createClient(apiKey);
 }
 
 /** Keep models that are free (prompt + completion price 0) and support native tool calling. */
@@ -25,7 +40,7 @@ export function filterFreeToolModels(models, telemetry = {}) {
         m.pricing?.completion === '0' &&
         (m.supported_parameters || []).includes('tools')
     )
-    .map((m, index) => ({ id: m.id, name: m.name, context: m.context_length, index }))
+    .map((m, index) => ({ id: m.id, name: m.name, context: m.context_length, index, provider: m.provider || 'openrouter' }))
     .sort((a, b) =>
       preferredModelRank(a.id) - preferredModelRank(b.id) ||
       telemetryScore(telemetry[b.id]) - telemetryScore(telemetry[a.id]) ||
@@ -39,11 +54,41 @@ function preferredModelRank(id) {
   return rank < 0 ? PREFERRED_TOOL_MODEL_PATTERNS.length : rank;
 }
 
+/**
+ * Fetch free tool-capable models from OpenRouter (backwards compatible).
+ */
 export async function fetchFreeToolModels(telemetry = {}) {
   const res = await fetch(`${BASE_URL}/models`);
   if (!res.ok) throw new Error(`Model list fetch failed: HTTP ${res.status}`);
   const { data } = await res.json();
   return filterFreeToolModels(data, telemetry);
+}
+
+/**
+ * Fetch models from a specific provider.
+ */
+export async function fetchModelsFromProvider(provider, telemetry = {}) {
+  const models = await provider.fetchModels();
+  const filtered = provider.filterFreeToolModels(models);
+  return filtered.map((m) => ({ ...m, provider: provider.id }));
+}
+
+/**
+ * Fetch models from all available providers.
+ */
+export async function fetchAllModels(apiKeys, telemetry = {}) {
+  const allModels = [];
+  for (const provider of Object.values(providers)) {
+    const key = apiKeys[provider.id];
+    if (!key || !provider.isAvailable(key)) continue;
+    try {
+      const models = await fetchModelsFromProvider(provider, telemetry);
+      allModels.push(...models);
+    } catch (err) {
+      console.error(`[warn] ${provider.name} model fetch failed: ${err.message}`);
+    }
+  }
+  return allModels;
 }
 
 const STATUS_TIMEOUT_MS = 5000;
