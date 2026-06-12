@@ -31,6 +31,7 @@ import {
   interactiveEnabled,
   legacyConhost,
   cyan,
+  green,
   yellow,
   magenta,
   red,

@@ -16,6 +16,7 @@ const esc = (open, close) => (s) => `${ESC}[${open}m${s}${ESC}[${close}m`;
 const wrap = (open, close) => (colorEnabled ? esc(open, close) : (s) => s);
 
 export const cyan = wrap(36, 39);
+export const green = wrap(32, 39);
 export const yellow = wrap(33, 39);
 export const magenta = wrap(35, 39);
 export const red = wrap(31, 39);
