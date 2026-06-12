@@ -576,72 +576,118 @@ function formatProviderStatus(providerId, apiKeys) {
 async function handleProviderCommand(input, rl, { config, saveConfig, apiKeys, providers: availableProviders }) {
   const arg = input.replace(/^\/provider\s*/, '').trim();
 
-  if (!arg || arg === 'list') {
-    console.log('\nAI Providers:');
-    for (const [id, info] of Object.entries(PROVIDER_INFO)) {
-      console.log(formatProviderStatus(id, apiKeys));
-      if (apiKeys[id]) {
-        console.log(dim(`    key: ${apiKeys[id].slice(0, 8)}...`));
-      } else {
-        console.log(dim(`    get key: ${info.url}`));
-      }
-    }
-    console.log(dim('\nUsage: /provider add <name>  — add a new provider'));
-    console.log(dim('       /provider remove <name> — remove a provider'));
+  if (arg === 'list') {
+    printProviderList(apiKeys);
+    return;
+  }
+
+  if (!arg) {
+    await interactiveProviderMenu(rl, { config, saveConfig, apiKeys });
     return;
   }
 
   const [action, providerId] = arg.split(/\s+/);
 
   if (action === 'add') {
-    const info = PROVIDER_INFO[providerId];
-    if (!info) {
-      console.log(red(`Unknown provider: ${providerId}`));
-      console.log(dim(`Available: ${Object.keys(PROVIDER_INFO).join(', ')}`));
-      return;
-    }
-    if (apiKeys[providerId]) {
-      console.log(dim(`${info.name} is already configured.`));
-      return;
-    }
-    console.log(`\nGet your API key at: ${info.url}`);
-    const key = (await rl.question(`Paste your ${info.name} API key: `)).trim();
-    if (!key) {
-      console.log(dim('cancelled'));
-      return;
-    }
-    if (info.keyPrefix && !key.startsWith(info.keyPrefix)) {
-      console.log(red(`${info.name} API keys should start with "${info.keyPrefix}"`));
-      console.log(dim('key not saved'));
-      return;
-    }
-    await saveProviderKey(providerId, key, { config });
-    saveConfig(config);
-    apiKeys[providerId] = key;
-    console.log(green(`${info.name} configured!`));
-    console.log(dim('Run /model to see new models from this provider.'));
+    await addProvider(providerId, rl, { config, saveConfig, apiKeys });
     return;
   }
 
   if (action === 'remove') {
-    const info = PROVIDER_INFO[providerId];
-    if (!info) {
-      console.log(red(`Unknown provider: ${providerId}`));
-      return;
-    }
-    if (!apiKeys[providerId]) {
-      console.log(dim(`${info.name} is not configured.`));
-      return;
-    }
-    delete apiKeys[providerId];
-    const configKey = { openrouter: 'apiKey', google: 'googleApiKey', groq: 'groqApiKey', mistral: 'mistralApiKey' }[providerId];
-    if (configKey) delete config[configKey];
-    saveConfig(config);
-    console.log(green(`${info.name} removed.`));
+    removeProvider(providerId, { config, saveConfig, apiKeys });
     return;
   }
 
   console.log(dim(`Unknown action: ${action}. Use /provider add or /provider remove.`));
+}
+
+function printProviderList(apiKeys) {
+  console.log('\nAI Providers:');
+  for (const [id, info] of Object.entries(PROVIDER_INFO)) {
+    console.log(formatProviderStatus(id, apiKeys));
+    if (apiKeys[id]) {
+      console.log(dim(`    key: ${apiKeys[id].slice(0, 8)}...`));
+    } else {
+      console.log(dim(`    get key: ${info.url}`));
+    }
+  }
+}
+
+async function interactiveProviderMenu(rl, { config, saveConfig, apiKeys }) {
+  const options = Object.entries(PROVIDER_INFO).map(([id, info]) => {
+    const configured = Boolean(apiKeys[id]);
+    const tier = info.free ? green('free') : yellow('paid');
+    const status = configured ? green('● configured') : dim('○ not configured');
+    const key = configured ? dim(` (${apiKeys[id].slice(0, 8)}...)`) : '';
+    return {
+      label: `${info.name}  ${status}  [${tier}]${key}`,
+      value: id,
+    };
+  });
+
+  options.push({ label: dim('Cancel'), value: null, isEscape: true });
+
+  const selected = await selectMenu(rl, 'Select a provider to configure:', options);
+  if (!selected) return;
+
+  if (apiKeys[selected]) {
+    const info = PROVIDER_INFO[selected];
+    const remove = await selectMenu(rl, `${info.name} is configured. Remove it?`, [
+      { label: `Remove ${info.name}`, value: true },
+      { label: 'Keep it', value: false, isEscape: true },
+    ]);
+    if (remove) {
+      removeProvider(selected, { config, saveConfig, apiKeys });
+    }
+  } else {
+    await addProvider(selected, rl, { config, saveConfig, apiKeys });
+  }
+}
+
+async function addProvider(providerId, rl, { config, saveConfig, apiKeys }) {
+  const info = PROVIDER_INFO[providerId];
+  if (!info) {
+    console.log(red(`Unknown provider: ${providerId}`));
+    console.log(dim(`Available: ${Object.keys(PROVIDER_INFO).join(', ')}`));
+    return;
+  }
+  if (apiKeys[providerId]) {
+    console.log(dim(`${info.name} is already configured.`));
+    return;
+  }
+  console.log(`\nGet your API key at: ${info.url}`);
+  const key = (await rl.question(`Paste your ${info.name} API key: `)).trim();
+  if (!key) {
+    console.log(dim('cancelled'));
+    return;
+  }
+  if (info.keyPrefix && !key.startsWith(info.keyPrefix)) {
+    console.log(red(`${info.name} API keys should start with "${info.keyPrefix}"`));
+    console.log(dim('key not saved'));
+    return;
+  }
+  await saveProviderKey(providerId, key, { config });
+  saveConfig(config);
+  apiKeys[providerId] = key;
+  console.log(green(`${info.name} configured!`));
+  console.log(dim('Run /model to see new models from this provider.'));
+}
+
+function removeProvider(providerId, { config, saveConfig, apiKeys }) {
+  const info = PROVIDER_INFO[providerId];
+  if (!info) {
+    console.log(red(`Unknown provider: ${providerId}`));
+    return;
+  }
+  if (!apiKeys[providerId]) {
+    console.log(dim(`${info.name} is not configured.`));
+    return;
+  }
+  delete apiKeys[providerId];
+  const configKey = { openrouter: 'apiKey', google: 'googleApiKey', groq: 'groqApiKey', mistral: 'mistralApiKey', anthropic: 'anthropicApiKey', openai: 'openaiApiKey' }[providerId];
+  if (configKey) delete config[configKey];
+  saveConfig(config);
+  console.log(green(`${info.name} removed.`));
 }
 
 export async function startRepl({
