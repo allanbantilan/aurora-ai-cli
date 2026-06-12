@@ -396,6 +396,53 @@ When REFACTORING an existing component:
 
 End with exactly: "✓ Component [name]: [created|refactored], [N composables extracted]."`,
   },
+
+  seed: {
+    needsArgument: true,
+    description: 'create factories and seeders for a Laravel model',
+    instruction: (target) => `Run the @seed agent on: ${target}
+
+Read the existing model, its migration, and relationships before creating anything.
+
+Step 1 — Read the model and its migration to understand columns, types, and relationships.
+Step 2 — Create a factory in database/factories/[Model]Factory.php:
+  - Use faker for realistic data (fake()->sentence(3) for names, fake()->decimal(2, 5) for prices)
+  - Define states for common variations (active, inactive, admin)
+  - Handle relationships: belongsTo uses the related factory, hasMany uses the count method
+  - Usecasts for dates: 'created_at' => fake()->dateTimeBetween('-1 year', 'now')
+Step 3 — Create or update the seeder in database/seeders/[Model]Seeder.php:
+  - Use the factory with count() for bulk creation
+  - Add specific records needed for the app (admin user, default categories)
+  - Use create() not make() so relationships are persisted
+Step 4 — Update DatabaseSeeder.php to call the new seeder.
+Step 5 — Run php artisan db:seed --class=[Model]Seeder to verify it works.
+
+End with exactly: "✓ Seeded [Model]: factory created, [N] records seeded."`,
+  },
+
+  policy: {
+    needsArgument: true,
+    description: 'generate a Laravel policy with CRUD authorization logic',
+    instruction: (target) => `Run the @policy agent on: ${target}
+
+Read the model, its relationships, and existing controllers before writing the policy.
+
+Step 1 — Read the model to understand ownership (user_id, team_id, org_id) and relationships.
+Step 2 — Generate the policy with php artisan make:policy [Model]Policy --model=[Model].
+Step 3 — Implement authorization methods:
+  - viewAny(User $user): always true (or team-scoped)
+  - view(User $user, Model $model): $user->id === $model->user_id (or team check)
+  - create(User $user): true (or role check)
+  - update(User $user, Model $model): ownership check
+  - delete(User $user, Model $model): ownership check (check for dependent relationships)
+  - restore(User $user, Model $model): ownership + SoftDeletes check
+  - forceDelete(User $user, Model $model): admin only or ownership
+Step 4 — Register the policy in AuthServiceProvider or use auto-discovery (Laravel 11+).
+Step 5 — Update the controller to use $this->authorize() or policy() helper.
+Step 6 — Add policy checks to Inertia controllers with $this->authorize('view', $model).
+
+End with exactly: "✓ Policy [Model]Policy: [N] methods implemented, registered."`,
+  },
 };
 
 export const AGENT_COMMANDS = [
@@ -410,6 +457,8 @@ export const AGENT_COMMANDS = [
   ['@scaffold', 'create a fresh Laravel + Vue 3 + Inertia + Tailwind project and build the requested feature'],
   ['@feature', 'build a complete feature: migration, model, controller, routes, and all dynamic Inertia pages'],
   ['@component', 'create or refactor a Vue 3 Composition API component'],
+  ['@seed', 'create factories and seeders for a Laravel model'],
+  ['@policy', 'generate a Laravel policy with CRUD authorization logic'],
 ];
 
 export function routeAgentInput(input) {

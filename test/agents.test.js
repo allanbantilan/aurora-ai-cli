@@ -116,6 +116,8 @@ test('agent command catalog lists every available agent for the @ menu', () => {
     '@scaffold',
     '@feature',
     '@component',
+    '@seed',
+    '@policy',
   ]);
   assert.equal(AGENT_COMMANDS.every(([, description]) => description.length > 0), true);
 });
