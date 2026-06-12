@@ -193,7 +193,7 @@ test('completeCommand completes a unique prefix', () => {
 
 test('completeCommand lists all commands for bare slash', () => {
   const [hits] = completeCommand('/');
-  assert.deepEqual(hits, ['/model', '/permission', '/plan', '/skills', '/agents', '/memory', '/remember', '/forget', '/clear', '/help', '/exit']);
+  assert.deepEqual(hits, ['/model', '/provider', '/permission', '/plan', '/skills', '/agents', '/memory', '/remember', '/forget', '/clear', '/help', '/exit']);
 });
 
 test('completeCommand returns no hits for non-command input', () => {

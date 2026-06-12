@@ -16,6 +16,8 @@ import { activateSkills, discoverSkills, formatSkillCatalog } from './skills.js'
 import { compactMessages, shouldCompact } from './context.js';
 import { recordModelEvent } from './telemetry.js';
 import { createAgentPermissions, discoverCustomAgents, routeCustomAgentInput, runIsolatedAgentSafely } from './custom-agents.js';
+import { saveApiKey as saveProviderKey, loadApiKey as loadProviderKey } from './credentials.js';
+import { providers as allProviders } from './providers/index.js';
 import {
   createSpinner,
   CodeHighlighter,
@@ -42,6 +44,7 @@ import {
 
 const COMMANDS = [
   ['/model', 'select models (order = fallback priority)'],
+  ['/provider', 'add or manage AI providers'],
   ['/permission', 'select Default or Auto mode'],
   ['/plan', 'plan a feature without implementing it'],
   ['/skills', 'list Aurora-native skills'],
@@ -552,6 +555,91 @@ export function executeMemoryCommand(command, store) {
     : `No matching [${command.scope}] memory found.`;
 }
 
+const PROVIDER_INFO = {
+  openrouter: { name: 'OpenRouter', url: 'https://openrouter.ai/keys', keyPrefix: 'sk-', envKey: 'OPENROUTER_API_KEY' },
+  google: { name: 'Google AI Studio', url: 'https://aistudio.google.com/apikey', keyPrefix: '', envKey: 'GOOGLE_API_KEY' },
+  groq: { name: 'Groq', url: 'https://console.groq.com/keys', keyPrefix: 'gsk_', envKey: 'GROQ_API_KEY' },
+  mistral: { name: 'Mistral', url: 'https://console.mistral.ai/api-keys', keyPrefix: '', envKey: 'MISTRAL_API_KEY' },
+};
+
+function formatProviderStatus(providerId, apiKeys) {
+  const info = PROVIDER_INFO[providerId];
+  const hasKey = Boolean(apiKeys[providerId]);
+  const status = hasKey ? green('● configured') : dim('○ not configured');
+  return `  ${info.name.padEnd(20)} ${status}`;
+}
+
+async function handleProviderCommand(input, rl, { config, saveConfig, apiKeys, providers: availableProviders }) {
+  const arg = input.replace(/^\/provider\s*/, '').trim();
+
+  if (!arg || arg === 'list') {
+    console.log('\nAI Providers:');
+    for (const [id, info] of Object.entries(PROVIDER_INFO)) {
+      console.log(formatProviderStatus(id, apiKeys));
+      if (apiKeys[id]) {
+        console.log(dim(`    key: ${apiKeys[id].slice(0, 8)}...`));
+      } else {
+        console.log(dim(`    get key: ${info.url}`));
+      }
+    }
+    console.log(dim('\nUsage: /provider add <name>  — add a new provider'));
+    console.log(dim('       /provider remove <name> — remove a provider'));
+    return;
+  }
+
+  const [action, providerId] = arg.split(/\s+/);
+
+  if (action === 'add') {
+    const info = PROVIDER_INFO[providerId];
+    if (!info) {
+      console.log(red(`Unknown provider: ${providerId}`));
+      console.log(dim(`Available: ${Object.keys(PROVIDER_INFO).join(', ')}`));
+      return;
+    }
+    if (apiKeys[providerId]) {
+      console.log(dim(`${info.name} is already configured.`));
+      return;
+    }
+    console.log(`\nGet your API key at: ${info.url}`);
+    const key = (await rl.question(`Paste your ${info.name} API key: `)).trim();
+    if (!key) {
+      console.log(dim('cancelled'));
+      return;
+    }
+    if (info.keyPrefix && !key.startsWith(info.keyPrefix)) {
+      console.log(red(`${info.name} API keys should start with "${info.keyPrefix}"`));
+      console.log(dim('key not saved'));
+      return;
+    }
+    await saveProviderKey(providerId, key, { config });
+    saveConfig(config);
+    apiKeys[providerId] = key;
+    console.log(green(`${info.name} configured!`));
+    console.log(dim('Run /model to see new models from this provider.'));
+    return;
+  }
+
+  if (action === 'remove') {
+    const info = PROVIDER_INFO[providerId];
+    if (!info) {
+      console.log(red(`Unknown provider: ${providerId}`));
+      return;
+    }
+    if (!apiKeys[providerId]) {
+      console.log(dim(`${info.name} is not configured.`));
+      return;
+    }
+    delete apiKeys[providerId];
+    const configKey = { openrouter: 'apiKey', google: 'googleApiKey', groq: 'groqApiKey', mistral: 'mistralApiKey' }[providerId];
+    if (configKey) delete config[configKey];
+    saveConfig(config);
+    console.log(green(`${info.name} removed.`));
+    return;
+  }
+
+  console.log(dim(`Unknown action: ${action}. Use /provider add or /provider remove.`));
+}
+
 export async function startRepl({
   client,
   models,
@@ -851,6 +939,10 @@ export async function startRepl({
         saveModels(chain);
       }
       console.log(dim(`model chain: ${chain.map(shortModelName).join(' → ')}`));
+      continue;
+    }
+    if (input === '/provider' || input.startsWith('/provider ')) {
+      await handleProviderCommand(input, rl, { config, saveConfig, apiKeys, providers: availableProviders });
       continue;
     }
     if (input === '/permission') {
