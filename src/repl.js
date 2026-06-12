@@ -1333,9 +1333,34 @@ export async function startRepl({
           planShownThisSession = true;
         }
         if (plan.status === 'complete') {
-          const choice = await selectMenu(rl, PLAN_IMPLEMENT_PROMPT, planCompletionOptions());
+          // If no structured plan was generated, show the raw response and ask user
+          if (!hasStructuredPlan(plan) && plan.text) {
+            console.log(dim('\nThe model did not return a structured plan. Showing raw response above.'));
+            const choice = await selectMenu(rl, 'Proceed with implementation anyway?', [
+              { label: 'Yes, proceed', value: 'proceed' },
+              { label: 'No, return to prompt', value: 'return', isEscape: true },
+            ]);
+            if (choice === 'return') {
+              const restored = endPlanTurn({ previousMode: previousModeAfterTurn, messages, cwd, context: currentContext() });
+              mode = restored.mode;
+              messages = restored.messages;
+              previousModeAfterTurn = null;
+              planningSession = false;
+              break;
+            }
+          } else {
+            const choice = await selectMenu(rl, PLAN_IMPLEMENT_PROMPT, planCompletionOptions());
+            if (choice === 'return') {
+              const restored = endPlanTurn({ previousMode: previousModeAfterTurn, messages, cwd, context: currentContext() });
+              mode = restored.mode;
+              messages = restored.messages;
+              previousModeAfterTurn = null;
+              planningSession = false;
+              break;
+            }
+          }
           const completed = completePlanTurn({
-            choice,
+            choice: 'proceed',
             previousMode: previousModeAfterTurn,
             messages,
             cwd,
