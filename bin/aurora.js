@@ -84,6 +84,8 @@ await startRepl({
   models,
   initialChain,
   strictPrivacy,
+  config,
+  saveConfig,
   apiKeys,
   providers: availableProviders,
   telemetry: config.modelTelemetry ??= {},

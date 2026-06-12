@@ -649,6 +649,8 @@ export async function startRepl({
   initialChain,
   saveModels,
   strictPrivacy = false,
+  config = {},
+  saveConfig = () => {},
   apiKeys = {},
   providers: availableProviders = [],
   telemetry = {},
