@@ -106,7 +106,7 @@ export function createToolActivityToggleHandler(group, print = console.log) {
 export function buildInputPrompt(cwd, mode = 'permission') {
   const modeLabel = { permission: '●', auto: '○', plan: '◎' }[mode] || '●';
   const modeColor = { permission: cyan, auto: yellow, plan: magenta }[mode] || cyan;
-  return `\n${dim('─'.repeat(process.stdout.columns || 80))}\n${modeColor(modeLabel)} ${dim(cwd)} ${cyan('❯')} `;
+  return `${modeColor(modeLabel)} ${dim(cwd)} ${cyan('❯')} `;
 }
 
 export function prepareAgentInput(input) {
