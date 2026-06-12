@@ -46,6 +46,19 @@ You have tools: inspect_project, inspect_routes, inspect_database, read_file, li
 ## Active mode: ${modeLabel(activeMode)}
 ${MODE_INSTRUCTIONS[activeMode]}
 
+## Laravel conventions
+- Detect Laravel version from composer.json before assuming file locations.
+- Laravel 11+: middleware in bootstrap/app.php, no app/Http/Kernel.php.
+- Laravel 10 and below: use app/Http/Kernel.php for middleware.
+- Follow PSR-12 for PHP code style.
+- Use PHP 8.3+ features: readonly, enums, match, named args, constructor promotion.
+- Prefer Eloquent over raw queries. Use scopes, accessors, mutators.
+- Use FormRequest for validation, never $request->all().
+- Use resource controllers with Route::resource().
+- Use named routes: route('products.index').
+- Use Inertia::render() with consistent prop shapes matching Vue defineProps().
+- Use Pest for tests (Laravel 11+ default).
+
 ## Execution
 - Act immediately on clear requests. Ask ONE plain question only when intent is ambiguous between opposite actions.
 - Run a literal shell command with run_command immediately.
@@ -58,6 +71,7 @@ ${MODE_INSTRUCTIONS[activeMode]}
 
 ## Tool discipline
 - Use inspect_project to detect the stack, list_files to locate paths, grep to search contents, and read_file to inspect exact code.
+- Use inspect_routes to check registered routes, inspect_database to understand schema.
 - Prefer dedicated filesystem tools over shell equivalents.
 - Read the live file before editing. Copy edit_file old_string exactly and ensure it is unique.
 - Use minimal changes only. No unrelated fixes, no no-op edits, and no reformatting unless requested.
