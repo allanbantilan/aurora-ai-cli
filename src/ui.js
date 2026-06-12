@@ -28,6 +28,30 @@ export const forceYellow = esc(33, 39);
 export const forceCyan = esc(36, 39);
 export const forceGreen = esc(32, 39);
 
+// Theme colors (consistent naming)
+export const THEME = {
+  primary: cyan,
+  secondary: magenta,
+  success: green,
+  warning: yellow,
+  error: red,
+  dim: dim,
+  border: forceDim,
+  code: forceYellow,
+};
+
+// Box-drawing characters (consistent usage)
+export const BOX = {
+  horizontal: '─',
+  vertical: '│',
+  topLeft: '╭',
+  topRight: '╮',
+  bottomLeft: '╰',
+  bottomRight: '╯',
+  tee: '├',
+  cross: '┼',
+};
+
 export function promptLabel(cwd = process.cwd()) {
   return `${cyan(path.basename(cwd))} > `;
 }
@@ -37,6 +61,9 @@ const TOOL_ACTIVITY = {
   read_file: { verb: 'read', singular: 'file', plural: 'files' },
   list_files: { verb: 'scanned', singular: 'file set', plural: 'file sets' },
   inspect_project: { verb: 'inspected', singular: 'project', plural: 'projects' },
+  write_file: { verb: 'wrote', singular: 'file', plural: 'files' },
+  edit_file: { verb: 'edited', singular: 'file', plural: 'files' },
+  run_command: { verb: 'ran', singular: 'command', plural: 'commands' },
 };
 
 export function isGroupableToolActivity(name) {
@@ -48,6 +75,9 @@ function toolActivityTarget({ name, args = {} }) {
   if (name === 'read_file') return String(args.path ?? 'unknown file');
   if (name === 'list_files') return `list files: ${String(args.path ?? '.')}`;
   if (name === 'inspect_project') return `inspect project: ${String(args.path ?? '.')}`;
+  if (name === 'write_file') return String(args.path ?? 'unknown file');
+  if (name === 'edit_file') return String(args.path ?? 'unknown file');
+  if (name === 'run_command') return String(args.command ?? 'unknown command');
   return name;
 }
 
@@ -101,6 +131,20 @@ export function formatCtx(pct) {
   };
 }
 
+/**
+ * Visual context meter with progress bar.
+ * Returns { bar, level } where bar is a visual progress bar and level is 'dim' | 'yellow' | 'red'.
+ */
+export function formatCtxMeter(pct) {
+  if (typeof pct !== 'number' || !Number.isFinite(pct)) return { bar: '░░░░░░░░░░', level: 'dim' };
+  const clamped = Math.max(0, Math.min(100, Math.round(pct)));
+  const filled = Math.round(clamped / 10);
+  const empty = 10 - filled;
+  const bar = '█'.repeat(filled) + '░'.repeat(empty);
+  const level = clamped >= 90 ? 'red' : clamped >= 70 ? 'yellow' : 'dim';
+  return { bar: `[${bar}]`, level };
+}
+
 /** user@host, tolerating the rare envs where userInfo() throws (no passwd entry). */
 function userHost() {
   try {
@@ -112,12 +156,12 @@ function userHost() {
 
 /** Dim one-line status: user@host:cwd · model (+N fallbacks) · ctx meter. */
 export function statusLine(cwd, chain, ctx = {}) {
-  const sep = legacyConhost ? ' | ' : ' · ';
+  const sep = legacyConhost ? ' | ' : ' │ ';
   const extra = chain.length > 1 ? ` (+${chain.length - 1} fallback${chain.length > 2 ? 's' : ''})` : '';
   const model = chain[0] ? shortModelName(chain[0]) : 'no model';
-  const { text, level } = formatCtx(ctx.pct);
-  const meter = level === 'red' ? red(text) : level === 'yellow' ? yellow(text) : text;
-  return dim(`${userHost()}:${cwd}${sep}${model}${extra}${sep}${meter}`);
+  const { bar, level } = formatCtxMeter(ctx.pct);
+  const meter = level === 'red' ? red(bar) : level === 'yellow' ? yellow(bar) : bar;
+  return dim(`${userHost()}${sep}${model}${extra}${sep}${meter}`);
 }
 
 const FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
@@ -193,6 +237,7 @@ export class CodeHighlighter {
     this.buffer = '';
     this.inFence = false;
     this.prevBlank = true; // tracks whether the last emitted line was blank
+    this.lineNumber = 1; // Track line numbers within code blocks
   }
 
   highlight(chunk) {
@@ -220,6 +265,7 @@ export class CodeHighlighter {
     if (line.trimStart().startsWith('```')) {
       if (!this.inFence) {
         this.inFence = true;
+        this.lineNumber = 1; // Reset line number at start of code block
         const lang = line.trim().slice(3).trim();
         // pad with a blank line so code blocks don't butt up against prose
         const pad = this.prevBlank ? '' : '\n';
@@ -231,7 +277,12 @@ export class CodeHighlighter {
       return forceDim(`╰${'─'.repeat(9)}`) + '\n';
     }
     if (!this.inFence) this.prevBlank = line.trim() === '';
-    return this.inFence ? forceDim('│ ') + forceYellow(line) : line;
+    if (this.inFence) {
+      const num = String(this.lineNumber).padStart(3, ' ');
+      this.lineNumber++;
+      return forceDim(`│ ${num} `) + forceYellow(line);
+    }
+    return line;
   }
 }
 

@@ -71,11 +71,11 @@ test('formatToolActivityGroup non-interactive output expands with ASCII details 
   assert.equal(out, 'Scanned 1 file set\n  - list files: src');
 });
 
-test('isGroupableToolActivity recognizes only read-only discovery tools', () => {
-  for (const name of ['grep', 'read_file', 'list_files', 'inspect_project']) {
+test('isGroupableToolActivity recognizes discovery and mutating tools', () => {
+  for (const name of ['grep', 'read_file', 'list_files', 'inspect_project', 'write_file', 'edit_file', 'run_command']) {
     assert.equal(isGroupableToolActivity(name), true);
   }
-  for (const name of ['write_file', 'edit_file', 'run_command', 'mystery']) {
+  for (const name of ['mystery']) {
     assert.equal(isGroupableToolActivity(name), false);
   }
 });
@@ -466,10 +466,9 @@ test('formatModelStatus formats health buckets', () => {
   assert.match(formatModelStatus(null), /no data/);
 });
 
-test('statusLine shows user@host:cwd, short model name and fallback count', () => {
+test('statusLine shows user@host, short model name and fallback count', () => {
   const line = statusLine('C:\\projects\\demo', ['deepseek/deepseek-chat:free', 'qwen/qwen3-coder:free', 'z-ai/glm-4.5-air:free']);
-  assert.ok(line.includes(`${os.userInfo().username}@${os.hostname()}:`), 'should contain user@host:');
-  assert.match(line, /C:\\projects\\demo/);
+  assert.ok(line.includes(`${os.userInfo().username}@${os.hostname()}`), 'should contain user@host');
   assert.match(line, /deepseek-chat/); // short name…
   assert.doesNotMatch(line, /deepseek\/deepseek-chat:free/); // …not the full id
   assert.match(line, /\+2 fallbacks/);
@@ -491,12 +490,14 @@ test('statusLine with an empty chain says no model', () => {
   assert.doesNotMatch(line, /fallback/);
 });
 
-test('statusLine shows ctx: -- when no usage data is given', () => {
-  assert.match(statusLine('/home/x', ['m/a']), /ctx: --/);
+test('statusLine shows visual context meter when no usage data is given', () => {
+  const line = statusLine('/home/x', ['m/a']);
+  assert.match(line, /░░░░░░░░░░/);
 });
 
-test('statusLine renders the ctx percentage when given', () => {
-  assert.match(statusLine('/home/x', ['m/a'], { pct: 19 }), /ctx: 19% used/);
+test('statusLine renders the visual context meter when percentage is given', () => {
+  const line = statusLine('/home/x', ['m/a'], { pct: 19 });
+  assert.match(line, /██░░░░░░░░/);
 });
 
 test('modelCategory buckets coder-ish ids as Coding, rest as General', () => {

@@ -54,16 +54,16 @@ import {
   formatAgentList,
 } from '../src/repl.js';
 
-test('createToolActivityGroup records successful discovery calls and flushes once', () => {
+test('createToolActivityGroup records successful discovery and mutating calls and flushes once', () => {
   const printed = [];
   const group = createToolActivityGroup({ interactive: true, print: (text) => printed.push(text) });
 
   assert.equal(group.record('grep', { pattern: 'x' }, 'match'), true);
   assert.equal(group.record('read_file', { path: 'a.js' }, 'Error: missing'), false);
-  assert.equal(group.record('write_file', { path: 'a.js' }, 'Wrote a.js'), false);
+  assert.equal(group.record('write_file', { path: 'a.js' }, 'Wrote a.js'), true);
   assert.equal(group.flush(), true);
   assert.match(printed[0], /Searched for 1 pattern/);
-  assert.doesNotMatch(printed[0], /a\.js/);
+  assert.match(printed[0], /wrote 1 file/);
   assert.equal(group.flush(), false);
 });
 
