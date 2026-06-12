@@ -83,6 +83,8 @@ export function getApiKey(config, provider = 'openrouter', env = process.env) {
     google: 'GOOGLE_API_KEY',
     groq: 'GROQ_API_KEY',
     mistral: 'MISTRAL_API_KEY',
+    anthropic: 'ANTHROPIC_API_KEY',
+    openai: 'OPENAI_API_KEY',
   };
   const envKey = env[envKeyMap[provider]];
   if (isValidKey(provider, envKey)) return envKey.trim();
@@ -92,6 +94,8 @@ export function getApiKey(config, provider = 'openrouter', env = process.env) {
     google: config.googleApiKey,
     groq: config.groqApiKey,
     mistral: config.mistralApiKey,
+    anthropic: config.anthropicApiKey,
+    openai: config.openaiApiKey,
   };
   const key = keyMap[provider] || '';
   return isValidKey(provider, key) ? key.trim() : null;
@@ -103,6 +107,8 @@ function isValidKey(provider, value) {
   if (!trimmed) return false;
   if (provider === 'openrouter') return trimmed.startsWith('sk-');
   if (provider === 'groq') return trimmed.startsWith('gsk_');
+  if (provider === 'anthropic') return trimmed.startsWith('sk-ant-');
+  if (provider === 'openai') return trimmed.startsWith('sk-');
   return trimmed.length > 10;
 }
 

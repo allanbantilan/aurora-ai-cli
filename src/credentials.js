@@ -9,6 +9,8 @@ const KEY_VALIDATORS = {
   google: (key) => typeof key === 'string' && key.trim().length > 10,
   groq: (key) => typeof key === 'string' && key.trim().startsWith('gsk_'),
   mistral: (key) => typeof key === 'string' && key.trim().length > 10,
+  anthropic: (key) => typeof key === 'string' && key.trim().startsWith('sk-ant-'),
+  openai: (key) => typeof key === 'string' && key.trim().startsWith('sk-'),
 };
 
 const DEFAULT_VALIDATOR = (key) => typeof key === 'string' && key.trim().length > 10;
@@ -33,6 +35,8 @@ const defaultStores = {
   google: createWindowsStore('Aurora Google API Key'),
   groq: createWindowsStore('Aurora Groq API Key'),
   mistral: createWindowsStore('Aurora Mistral API Key'),
+  anthropic: createWindowsStore('Aurora Anthropic API Key'),
+  openai: createWindowsStore('Aurora OpenAI API Key'),
 };
 
 /** Environment variable names for each provider */
@@ -41,6 +45,8 @@ const ENV_KEYS = {
   google: 'GOOGLE_API_KEY',
   groq: 'GROQ_API_KEY',
   mistral: 'MISTRAL_API_KEY',
+  anthropic: 'ANTHROPIC_API_KEY',
+  openai: 'OPENAI_API_KEY',
 };
 
 /** Config file key names for each provider */
@@ -49,6 +55,8 @@ const CONFIG_KEYS = {
   google: 'googleApiKey',
   groq: 'groqApiKey',
   mistral: 'mistralApiKey',
+  anthropic: 'anthropicApiKey',
+  openai: 'openaiApiKey',
 };
 
 function isValidKey(provider, key) {

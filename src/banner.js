@@ -40,7 +40,16 @@ function crownArt() {
   ].map((line) => vpad(line, QW));
 }
 
-function infoPanel({ chain, status, health, models = [] }) {
+const PROVIDER_DISPLAY = {
+  openrouter: { name: 'OpenRouter', free: true },
+  google: { name: 'Google', free: true },
+  groq: { name: 'Groq', free: true },
+  mistral: { name: 'Mistral', free: true },
+  anthropic: { name: 'Claude', free: false },
+  openai: { name: 'OpenAI', free: false },
+};
+
+function infoPanel({ chain, status, health, models = [], apiKeys = {} }) {
   const nameW = Math.max(12, ...chain.map((id) => shortModelName(id).length));
   const row = (label, id, provider) => {
     const providerLabel = provider ? ` (${providerDisplayName(provider)})` : '';
@@ -51,7 +60,6 @@ function infoPanel({ chain, status, health, models = [] }) {
   inner.push(`  ${BCY}✦  A U R O R A${R}`);
   inner.push('');
   if (chain.length) {
-    // Find provider for each model in chain
     const modelProviders = new Map(models.map((m) => [m.id, m.provider]));
     inner.push(row('model', chain[0], modelProviders.get(chain[0])));
     chain.slice(1).forEach((id, i) => inner.push(row(i === 0 ? 'fallback' : '', id, modelProviders.get(id))));
@@ -59,11 +67,23 @@ function infoPanel({ chain, status, health, models = [] }) {
   } else {
     inner.push(`  ${DIM}model     —${R}`);
   }
+  // Show configured providers
+  const configured = Object.entries(apiKeys).filter(([, key]) => key).map(([id]) => id);
+  if (configured.length) {
+    const providerLabels = configured.map((id) => {
+      const info = PROVIDER_DISPLAY[id];
+      if (!info) return id;
+      const tier = info.free ? `${CY}` : `${WH}`;
+      return `${tier}${info.name}${R}`;
+    });
+    inner.push(`  ${DIM}providers ${R} ${providerLabels.join(' · ')}`);
+  }
   inner.push(`  ${DIM}status   ${R} ${WH}${status}${R}`);
   inner.push('');
   inner.push(`  ${CY}❄${R}  ${DIM}type a request, or${R} ${WH}/help${R} ${DIM}for commands${R}`);
   inner.push(`     ${WH}/permission${R}  ${DIM}change mode${R}`);
   inner.push(`     ${WH}/plan${R}        ${DIM}plan feature${R}`);
+  inner.push(`     ${WH}/provider${R}   ${DIM}manage providers${R}`);
 
   const pw = Math.max(40, ...inner.map(vlen)) + 2;
   const top = `${DIM}┌${'─'.repeat(pw)}┐${R}`;
@@ -73,9 +93,9 @@ function infoPanel({ chain, status, health, models = [] }) {
   return [top, ...inner.map((s) => `${brd}${vpad(s, pw)}${brd}`), bot];
 }
 
-export function printBanner({ chain = [], status = 'online', health = new Map(), models = [] } = {}) {
+export function printBanner({ chain = [], status = 'online', health = new Map(), models = [], apiKeys = {} } = {}) {
   const crown = crownArt();
-  const panel = infoPanel({ chain, status, health, models });
+  const panel = infoPanel({ chain, status, health, models, apiKeys });
 
   // vertically center the panel beside the crown
   const offset = Math.max(0, Math.floor((crown.length - panel.length) / 2));

@@ -556,17 +556,20 @@ export function executeMemoryCommand(command, store) {
 }
 
 const PROVIDER_INFO = {
-  openrouter: { name: 'OpenRouter', url: 'https://openrouter.ai/keys', keyPrefix: 'sk-', envKey: 'OPENROUTER_API_KEY' },
-  google: { name: 'Google AI Studio', url: 'https://aistudio.google.com/apikey', keyPrefix: '', envKey: 'GOOGLE_API_KEY' },
-  groq: { name: 'Groq', url: 'https://console.groq.com/keys', keyPrefix: 'gsk_', envKey: 'GROQ_API_KEY' },
-  mistral: { name: 'Mistral', url: 'https://console.mistral.ai/api-keys', keyPrefix: '', envKey: 'MISTRAL_API_KEY' },
+  openrouter: { name: 'OpenRouter', url: 'https://openrouter.ai/keys', keyPrefix: 'sk-', envKey: 'OPENROUTER_API_KEY', free: true },
+  google: { name: 'Google AI Studio', url: 'https://aistudio.google.com/apikey', keyPrefix: '', envKey: 'GOOGLE_API_KEY', free: true },
+  groq: { name: 'Groq', url: 'https://console.groq.com/keys', keyPrefix: 'gsk_', envKey: 'GROQ_API_KEY', free: true },
+  mistral: { name: 'Mistral', url: 'https://console.mistral.ai/api-keys', keyPrefix: '', envKey: 'MISTRAL_API_KEY', free: true },
+  anthropic: { name: 'Anthropic', url: 'https://console.anthropic.com/', keyPrefix: 'sk-ant-', envKey: 'ANTHROPIC_API_KEY', free: false },
+  openai: { name: 'OpenAI', url: 'https://platform.openai.com/api-keys', keyPrefix: 'sk-', envKey: 'OPENAI_API_KEY', free: false },
 };
 
 function formatProviderStatus(providerId, apiKeys) {
   const info = PROVIDER_INFO[providerId];
   const hasKey = Boolean(apiKeys[providerId]);
   const status = hasKey ? green('● configured') : dim('○ not configured');
-  return `  ${info.name.padEnd(20)} ${status}`;
+  const tier = info.free ? green('free') : yellow('paid');
+  return `  ${info.name.padEnd(20)} ${status}  ${dim(`[${tier}]`)}`;
 }
 
 async function handleProviderCommand(input, rl, { config, saveConfig, apiKeys, providers: availableProviders }) {
@@ -814,7 +817,7 @@ export async function startRepl({
     bannerHealth = await fetchModelStatus(chain).catch(() => new Map());
     spinner.stop();
   }
-  printBanner({ chain, status: 'online', health: bannerHealth, models });
+  printBanner({ chain, status: 'online', health: bannerHealth, models, apiKeys });
 
   const ch = legacyConhost ? '-' : '─';
   const rule = () => dim(ch.repeat(process.stdout.columns || 80));
