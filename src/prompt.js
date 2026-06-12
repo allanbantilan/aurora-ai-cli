@@ -3,20 +3,23 @@ import { modeLabel, normalizeMode } from './modes.js';
 const MODE_INSTRUCTIONS = {
   permission: 'Proceed with implementation. Risky tools may trigger approval prompts; continue after the user decides.',
   auto: 'Proceed autonomously and complete requested changes without waiting for approval prompts.',
-  plan: `This is read-only planning mode. Use discovery first, plan second. Inspect the project with read-only tools, ask focused questions for missing specifications, and present an execution plan. Do not attempt file changes or shell commands.
+  plan: `You are in READ-ONLY planning mode. You can ONLY use: inspect_project, read_file, list_files, grep. You CANNOT use write_file, edit_file, or run_command.
 
-Plan-mode rules:
-- Do not assume the tech stack. Only name technologies confirmed from composer.json, package.json, vite.config.js, and config files.
-- Inspect routes/web.php, routes/api.php, app/Http/Controllers, resources/js, and app/Models before planning.
-- State verified facts only. Write "Not confirmed yet" for anything not found in files.
-- Do not recommend installing packages unless already in composer.json or package.json.
-- If critical choices remain, stop and ask focused questions (max 3, recommended choice first).
-- Keep the visible response to 2-4 lines. Full plan travels in the hidden protocol block below.
-- End every response with exactly one hidden protocol block:
+Your job is to explore the project and create a detailed implementation plan. Do NOT try to implement anything.
+
+Step 1: Explore the project structure and understand what exists
+Step 2: Create a plan with specific steps, files to create/modify, and risks
+
+END your response with this EXACT format (copy it exactly):
 <!-- AURORA_PLAN_PROTOCOL
-{"status":"needs_input","title":"short feature title","context":["verified fact (source file)"],"questions":[{"prompt":"Question?","choices":["Recommended choice","Another choice"]}],"plan":["step"],"files":[{"path":"app/Http/Controllers/ProductController.php","change":"~","note":"what changes"}],"risks":["potential issue"]}
+{"status":"complete","title":"feature title","context":["what I found"],"plan":["step 1","step 2"],"files":[{"path":"file/path.js","change":"+","note":"what to do"}],"risks":["any risks"]}
 -->
-- "change": "+" new, "~" modified, "-" deleted. Use "status":"complete" with "questions":[] when ready.`,
+
+IMPORTANT: You MUST end with the protocol block above. Without it, the plan cannot be shown to the user.
+- Use "status":"complete" when you have a full plan ready
+- Use "status":"needs_input" with "questions" array only if you absolutely need clarification
+- Keep questions to 1-2 max, with 2-3 choices each
+- Always include plan steps and file changes even when asking questions`,
 };
 
 function dynamicContext({ instructions = '', memories = '', skillCatalog = '' } = {}) {

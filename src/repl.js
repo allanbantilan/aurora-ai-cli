@@ -1328,51 +1328,52 @@ export async function startRepl({
           process.stdout.write(`\n${magenta('◆')}  ${highlighter.highlight(plan.text)}${highlighter.flush()}\n`);
         }
         if (hasStructuredPlan(plan)) {
-          // first render shows the full box; refreshes after answered questions show only what changed
           console.log(`\n${renderPlan(plan, planShownThisSession ? { update: true } : {})}`);
           planShownThisSession = true;
         }
         if (plan.status === 'complete') {
-          // If no structured plan was generated, show the raw response and ask user
-          if (!hasStructuredPlan(plan) && plan.text) {
-            console.log(dim('\nThe model did not return a structured plan. Showing raw response above.'));
-            const choice = await selectMenu(rl, 'Proceed with implementation anyway?', [
-              { label: 'Yes, proceed', value: 'proceed' },
-              { label: 'No, return to prompt', value: 'return', isEscape: true },
-            ]);
-            if (choice === 'return') {
-              const restored = endPlanTurn({ previousMode: previousModeAfterTurn, messages, cwd, context: currentContext() });
-              mode = restored.mode;
-              messages = restored.messages;
+          const hasPlan = hasStructuredPlan(plan) && (plan.plan?.length || plan.files?.length);
+          if (hasPlan) {
+            const choice = await selectMenu(rl, PLAN_IMPLEMENT_PROMPT, planCompletionOptions());
+            if (choice === 'proceed') {
+              const completed = completePlanTurn({ choice: 'proceed', previousMode: previousModeAfterTurn, messages, cwd, context: currentContext() });
+              mode = completed.mode;
+              messages = completed.messages;
+              input = completed.input;
               previousModeAfterTurn = null;
               planningSession = false;
-              break;
+              if (!input) break;
+              continue;
             }
           } else {
-            const choice = await selectMenu(rl, PLAN_IMPLEMENT_PROMPT, planCompletionOptions());
-            if (choice === 'return') {
-              const restored = endPlanTurn({ previousMode: previousModeAfterTurn, messages, cwd, context: currentContext() });
-              mode = restored.mode;
-              messages = restored.messages;
-              previousModeAfterTurn = null;
-              planningSession = false;
-              break;
-            }
+            console.log(dim('\nThe model did not generate a structured plan. You can:'));
           }
-          const completed = completePlanTurn({
-            choice: 'proceed',
-            previousMode: previousModeAfterTurn,
-            messages,
-            cwd,
-            context: currentContext(),
-          });
-          mode = completed.mode;
-          messages = completed.messages;
-          input = completed.input;
+          const action = await selectMenu(rl, hasPlan ? '' : 'What would you like to do?', [
+            { label: 'Retry planning', value: 'retry' },
+            { label: 'Implement anyway (tell the AI what to do)', value: 'implement' },
+            { label: 'Return to prompt', value: 'return', isEscape: true },
+          ]);
+          if (action === 'retry') {
+            input = formatPlanAnswers([{ prompt: 'The previous plan was incomplete. Please explore the project and generate a complete plan with steps, files, and risks.', answer: 'Generate a complete plan now' }]);
+            continue;
+          }
+          if (action === 'implement') {
+            const task = (await rl.question('What should Aurora implement? > ')).trim();
+            const restored = endPlanTurn({ previousMode: previousModeAfterTurn, messages, cwd, context: currentContext() });
+            mode = restored.mode;
+            messages = restored.messages;
+            previousModeAfterTurn = null;
+            planningSession = false;
+            if (!task) break;
+            input = task;
+            continue;
+          }
+          const restored = endPlanTurn({ previousMode: previousModeAfterTurn, messages, cwd, context: currentContext() });
+          mode = restored.mode;
+          messages = restored.messages;
           previousModeAfterTurn = null;
           planningSession = false;
-          if (!input) break;
-          continue;
+          break;
         }
         input = formatPlanAnswers(await askPlanQuestions(plan.questions));
       }

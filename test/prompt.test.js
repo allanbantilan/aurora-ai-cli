@@ -57,13 +57,12 @@ test('systemPrompt preserves the plan-mode protocol and rules', () => {
   const prompt = systemPrompt('.', 'plan');
 
   assert.match(prompt, /Active mode: Plan/);
-  assert.match(prompt, /read-only planning mode/i);
-  assert.match(prompt, /Not confirmed yet/);
+  assert.match(prompt, /READ-ONLY planning mode/i);
   assert.match(prompt, /AURORA_PLAN_PROTOCOL/);
-  for (const field of ['title', 'context', 'questions', 'plan', 'files', 'risks']) {
-    assert.match(prompt, new RegExp(`"${field}"`));
-  }
-  assert.match(prompt, /2-4 lines/);
+  assert.match(prompt, /status.*complete/);
+  assert.match(prompt, /plan.*step/);
+  assert.match(prompt, /files.*path/);
+  assert.match(prompt, /risks/);
 });
 
 test('systemPrompt retains bounded dynamic instructions, memory, and skill catalog', () => {
