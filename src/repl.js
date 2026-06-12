@@ -7,7 +7,7 @@ import * as tools from './tools/index.js';
 import { createPermissions } from './permissions.js';
 import { systemPrompt } from './prompt.js';
 import { AGENT_COMMANDS, routeAgentInput, isLandingPageScaffold } from './agents.js';
-import { fetchModelStatus } from './client.js';
+import { fetchModelStatus, fetchAllModels } from './client.js';
 import { modeLabel } from './modes.js';
 import { formatDiff } from './diff.js';
 import { createMemoryStore, learnExplicitPreferences } from './memory.js';
@@ -994,7 +994,23 @@ export async function startRepl({
       continue;
     }
     if (input === '/provider' || input.startsWith('/provider ')) {
+      const before = Object.keys(apiKeys).filter((k) => apiKeys[k]).join(',');
       await handleProviderCommand(input, rl, { config, saveConfig, apiKeys, providers: availableProviders });
+      const after = Object.keys(apiKeys).filter((k) => apiKeys[k]).join(',');
+      if (before !== after) {
+        spinner.start('refreshing models...');
+        try {
+          models = await fetchAllModels(apiKeys, telemetry);
+          if (models.length) {
+            chain = models.slice(0, 3).map((m) => m.id);
+            saveModels(chain);
+            console.log(dim(`models refreshed: ${models.length} models from ${new Set(models.map((m) => m.provider)).size} providers`));
+          }
+        } catch (err) {
+          console.log(yellow(`[warn] could not refresh models: ${err.message}`));
+        }
+        spinner.stop();
+      }
       continue;
     }
     if (input === '/permission') {
