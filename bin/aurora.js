@@ -44,9 +44,6 @@ if (availableProviders.length > 1) {
 }
 
 const strictPrivacy = config.strictPrivacy === true;
-if (!strictPrivacy) {
-  console.log('[privacy] Provider data collection is allowed. Set "strictPrivacy": true in ~/.aurora/config.json to deny it.');
-}
 
 const savedChain = Array.isArray(config.lastModels) ? config.lastModels : [];
 
