@@ -7,7 +7,7 @@ import { definitions, executeTool, previewTool, RISKY } from '../src/tools/index
 
 test('definitions lists all registered tools', () => {
   const names = definitions.map((d) => d.function.name).sort();
-  assert.deepEqual(names, ['edit_file', 'grep', 'inspect_project', 'list_files', 'read_file', 'run_command', 'write_file']);
+  assert.deepEqual(names, ['edit_file', 'grep', 'inspect_database', 'inspect_project', 'inspect_routes', 'list_files', 'read_file', 'run_command', 'write_file']);
 });
 
 test('RISKY contains exactly the mutating tools', () => {

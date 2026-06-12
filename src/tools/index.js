@@ -5,9 +5,13 @@ import * as writeFile from './write-file.js';
 import * as editFile from './edit-file.js';
 import * as runCommand from './run-command.js';
 import * as inspectProject from './inspect-project.js';
+import * as inspectRoutes from './inspect-routes.js';
+import * as inspectDatabase from './inspect-database.js';
 
 const tools = {
   inspect_project: inspectProject,
+  inspect_routes: inspectRoutes,
+  inspect_database: inspectDatabase,
   read_file: readFile,
   list_files: listFiles,
   grep,

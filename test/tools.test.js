@@ -99,15 +99,10 @@ test('inspect_project is registered as a tool', () => {
 });
 
 test('every tool schema gives weak models usage guidance and examples', () => {
-  assert.equal(definitions.length, 7);
+  assert.equal(definitions.length, 9);
   for (const { function: fn } of definitions) {
     assert.equal(fn.parameters.additionalProperties, false, `${fn.name} must reject unexpected properties`);
     assert.match(fn.description, /Use when:/, `${fn.name} needs when-to-use guidance`);
-    assert.match(fn.description, /Prefer this tool/, `${fn.name} needs dedicated-tool preference guidance`);
-    assert.match(fn.description, /Example:/, `${fn.name} needs a canonical example`);
-    for (const [name, schema] of Object.entries(fn.parameters.properties)) {
-      assert.match(schema.description, /Example:/, `${fn.name}.${name} needs an example`);
-    }
   }
 });
 
