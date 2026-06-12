@@ -77,7 +77,16 @@ export function setDefaultProvider(config, providerId) {
 /**
  * Get API key for a specific provider from config.
  */
-export function getApiKey(config, provider = 'openrouter') {
+export function getApiKey(config, provider = 'openrouter', env = process.env) {
+  const envKeyMap = {
+    openrouter: 'OPENROUTER_API_KEY',
+    google: 'GOOGLE_API_KEY',
+    groq: 'GROQ_API_KEY',
+    mistral: 'MISTRAL_API_KEY',
+  };
+  const envKey = env[envKeyMap[provider]];
+  if (isValidKey(provider, envKey)) return envKey.trim();
+  
   const keyMap = {
     openrouter: config.apiKey,
     google: config.googleApiKey,
@@ -85,7 +94,16 @@ export function getApiKey(config, provider = 'openrouter') {
     mistral: config.mistralApiKey,
   };
   const key = keyMap[provider] || '';
-  return typeof key === 'string' && key.trim().length > 10 ? key.trim() : null;
+  return isValidKey(provider, key) ? key.trim() : null;
+}
+
+function isValidKey(provider, value) {
+  if (typeof value !== 'string') return false;
+  const trimmed = value.trim();
+  if (!trimmed) return false;
+  if (provider === 'openrouter') return trimmed.startsWith('sk-');
+  if (provider === 'groq') return trimmed.startsWith('gsk_');
+  return trimmed.length > 10;
 }
 
 /** Normalize legacy config (lastModel → lastModels). Returns true if changed. */

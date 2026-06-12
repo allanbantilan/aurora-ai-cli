@@ -32,7 +32,7 @@ const fixture = [
 
 test('keeps only free models with tool support', () => {
   const out = filterFreeToolModels(fixture);
-  assert.deepEqual(out, [{ id: 'free/tools-model', name: 'Free Tools', context: 32000 }]);
+  assert.deepEqual(out, [{ id: 'free/tools-model', name: 'Free Tools', context: 32000, provider: 'openrouter' }]);
 });
 
 test('ranks preferred tool-trained coder models first and retains stable fallbacks', () => {

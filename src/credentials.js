@@ -8,7 +8,7 @@ const KEY_VALIDATORS = {
   openrouter: (key) => typeof key === 'string' && key.trim().startsWith('sk-'),
   google: (key) => typeof key === 'string' && key.trim().length > 10,
   groq: (key) => typeof key === 'string' && key.trim().startsWith('gsk_'),
-  mistral: (key) => typeof key => typeof key === 'string' && key.trim().length > 10,
+  mistral: (key) => typeof key === 'string' && key.trim().length > 10,
 };
 
 const DEFAULT_VALIDATOR = (key) => typeof key === 'string' && key.trim().length > 10;

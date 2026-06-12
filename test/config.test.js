@@ -29,11 +29,9 @@ test('saveConfig then loadConfig round-trips', () => {
 });
 
 test('getApiKey prefers env var over config', () => {
-  process.env.OPENROUTER_API_KEY = 'sk-env-key';
-  assert.equal(getApiKey({ apiKey: 'sk-cfg-key' }), 'sk-env-key');
-  delete process.env.OPENROUTER_API_KEY;
-  assert.equal(getApiKey({ apiKey: 'sk-cfg-key' }), 'sk-cfg-key');
-  assert.equal(getApiKey({}), null);
+  assert.equal(getApiKey({ apiKey: 'sk-cfg-key' }, 'openrouter', { OPENROUTER_API_KEY: 'sk-env-key-long' }), 'sk-env-key-long');
+  assert.equal(getApiKey({ apiKey: 'sk-cfg-key' }, 'openrouter', {}), 'sk-cfg-key');
+  assert.equal(getApiKey({}, 'openrouter', {}), null);
 });
 
 test('getApiKey ignores clearly invalid saved keys', () => {
@@ -56,10 +54,10 @@ test('migrateConfig prefers existing lastModels and drops lastModel', () => {
 });
 
 test('migrateConfig leaves modern or empty configs untouched', () => {
-  const modern = { lastModels: ['a/m1'] };
+  const modern = { lastModels: ['a/m1'], providers: { enabled: ['openrouter'], default: 'openrouter' } };
   assert.equal(migrateConfig(modern), false);
-  assert.deepEqual(modern, { lastModels: ['a/m1'] });
+  assert.deepEqual(modern, { lastModels: ['a/m1'], providers: { enabled: ['openrouter'], default: 'openrouter' } });
   const empty = {};
-  assert.equal(migrateConfig(empty), false);
-  assert.deepEqual(empty, {});
+  assert.equal(migrateConfig(empty), true);
+  assert.deepEqual(empty, { providers: { enabled: ['openrouter'], default: 'openrouter' } });
 });
