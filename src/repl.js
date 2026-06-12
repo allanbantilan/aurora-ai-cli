@@ -103,8 +103,10 @@ export function createToolActivityToggleHandler(group, print = console.log) {
   };
 }
 
-export function buildInputPrompt(cwd) {
-  return `${dim(cwd)} ${cyan('❯')} `;
+export function buildInputPrompt(cwd, mode = 'permission') {
+  const modeLabel = { permission: '●', auto: '○', plan: '◎' }[mode] || '●';
+  const modeColor = { permission: cyan, auto: yellow, plan: magenta }[mode] || cyan;
+  return `\n${dim('─'.repeat(process.stdout.columns || 80))}\n${modeColor(modeLabel)} ${dim(cwd)} ${cyan('❯')} `;
 }
 
 export function prepareAgentInput(input) {
@@ -870,7 +872,7 @@ export async function startRepl({
 
   const ch = legacyConhost ? '-' : '─';
   const rule = () => dim(ch.repeat(process.stdout.columns || 80));
-  const prompt = () => buildInputPrompt(process.cwd());
+  const prompt = () => buildInputPrompt(process.cwd(), mode);
 
   /**
    * Read one line of input. In interactive mode, typing "/" or "@" as the
