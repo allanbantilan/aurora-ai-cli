@@ -23,13 +23,69 @@ export function saveConfig(config, file = CONFIG_FILE) {
   fs.writeFileSync(file, JSON.stringify(config, null, 2));
 }
 
-export function getApiKey(config) {
-  const key = process.env.OPENROUTER_API_KEY || config.apiKey || '';
-  return isApiKey(key) ? key : null;
+/**
+ * Get provider configuration.
+ * Returns: { enabled: ['openrouter', 'google', ...], default: 'openrouter', ... }
+ */
+export function getProviderConfig(config) {
+  return config.providers || { enabled: ['openrouter'], default: 'openrouter' };
 }
 
-function isApiKey(value) {
-  return typeof value === 'string' && value.trim().startsWith('sk-');
+/**
+ * Set provider configuration.
+ */
+export function setProviderConfig(config, providerConfig) {
+  config.providers = providerConfig;
+  return config;
+}
+
+/**
+ * Enable a provider in config.
+ */
+export function enableProvider(config, providerId) {
+  const providers = getProviderConfig(config);
+  if (!providers.enabled.includes(providerId)) {
+    providers.enabled.push(providerId);
+  }
+  setProviderConfig(config, providers);
+  return config;
+}
+
+/**
+ * Disable a provider in config.
+ */
+export function disableProvider(config, providerId) {
+  const providers = getProviderConfig(config);
+  providers.enabled = providers.enabled.filter((id) => id !== providerId);
+  if (providers.default === providerId) {
+    providers.default = providers.enabled[0] || 'openrouter';
+  }
+  setProviderConfig(config, providers);
+  return config;
+}
+
+/**
+ * Set default provider.
+ */
+export function setDefaultProvider(config, providerId) {
+  const providers = getProviderConfig(config);
+  providers.default = providerId;
+  setProviderConfig(config, providers);
+  return config;
+}
+
+/**
+ * Get API key for a specific provider from config.
+ */
+export function getApiKey(config, provider = 'openrouter') {
+  const keyMap = {
+    openrouter: config.apiKey,
+    google: config.googleApiKey,
+    groq: config.groqApiKey,
+    mistral: config.mistralApiKey,
+  };
+  const key = keyMap[provider] || '';
+  return typeof key === 'string' && key.trim().length > 10 ? key.trim() : null;
 }
 
 /** Normalize legacy config (lastModel → lastModels). Returns true if changed. */
@@ -41,6 +97,11 @@ export function migrateConfig(config) {
   }
   if ('lastModel' in config) {
     delete config.lastModel;
+    changed = true;
+  }
+  // Add default provider config if missing
+  if (!config.providers) {
+    config.providers = { enabled: ['openrouter'], default: 'openrouter' };
     changed = true;
   }
   return changed;
