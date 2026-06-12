@@ -507,8 +507,20 @@ export function shortModelName(id) {
 }
 
 /** Advisory UI grouping only — affects picker layout, never behavior. */
-export function modelCategory(id) {
-  return /coder|codestral|deepseek|devstral|code/i.test(id) ? 'Coding' : 'General';
+export function modelCategory(id, provider) {
+  const coding = /coder|codestral|deepseek|devstral|code/i.test(id) ? 'Coding' : 'General';
+  return provider ? `${provider}/${coding}` : coding;
+}
+
+/** Get provider display name from model provider id */
+export function providerDisplayName(providerId) {
+  const names = {
+    openrouter: 'OpenRouter',
+    google: 'Google',
+    groq: 'Groq',
+    mistral: 'Mistral',
+  };
+  return names[providerId] || providerId;
 }
 
 /** Render a {uptime, ok}|null health record as a colored status label. */

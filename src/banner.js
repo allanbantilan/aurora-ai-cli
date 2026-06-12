@@ -1,4 +1,4 @@
-import { colorEnabled, shortModelName, formatModelStatus } from './ui.js';
+import { colorEnabled, shortModelName, formatModelStatus, providerDisplayName } from './ui.js';
 
 /** Visual length: strip ANSI escape codes before measuring. */
 function vlen(s) {
@@ -40,17 +40,21 @@ function crownArt() {
   ].map((line) => vpad(line, QW));
 }
 
-function infoPanel({ chain, status, health }) {
+function infoPanel({ chain, status, health, models = [] }) {
   const nameW = Math.max(12, ...chain.map((id) => shortModelName(id).length));
-  const row = (label, id) =>
-    `  ${DIM}${label.padEnd(9)}${R} ${WH}${shortModelName(id).padEnd(nameW)}${R}  ${formatModelStatus(health.get(id))}`;
+  const row = (label, id, provider) => {
+    const providerLabel = provider ? ` (${providerDisplayName(provider)})` : '';
+    return `  ${DIM}${label.padEnd(9)}${R} ${WH}${shortModelName(id).padEnd(nameW)}${R}${DIM}${providerLabel}${R}  ${formatModelStatus(health.get(id))}`;
+  };
 
   const inner = [];
   inner.push(`  ${BCY}✦  A U R O R A${R}`);
   inner.push('');
   if (chain.length) {
-    inner.push(row('model', chain[0]));
-    chain.slice(1).forEach((id, i) => inner.push(row(i === 0 ? 'fallback' : '', id)));
+    // Find provider for each model in chain
+    const modelProviders = new Map(models.map((m) => [m.id, m.provider]));
+    inner.push(row('model', chain[0], modelProviders.get(chain[0])));
+    chain.slice(1).forEach((id, i) => inner.push(row(i === 0 ? 'fallback' : '', id, modelProviders.get(id))));
     if (chain.length === 1) inner.push(`  ${DIM}fallback  none${R}`);
   } else {
     inner.push(`  ${DIM}model     —${R}`);
@@ -69,9 +73,9 @@ function infoPanel({ chain, status, health }) {
   return [top, ...inner.map((s) => `${brd}${vpad(s, pw)}${brd}`), bot];
 }
 
-export function printBanner({ chain = [], status = 'online', health = new Map() } = {}) {
+export function printBanner({ chain = [], status = 'online', health = new Map(), models = [] } = {}) {
   const crown = crownArt();
-  const panel = infoPanel({ chain, status, health });
+  const panel = infoPanel({ chain, status, health, models });
 
   // vertically center the panel beside the crown
   const offset = Math.max(0, Math.floor((crown.length - panel.length) / 2));

@@ -25,6 +25,7 @@ import {
   formatModelStatus,
   shortModelName,
   modelCategory,
+  providerDisplayName,
   interactiveEnabled,
   legacyConhost,
   cyan,
@@ -557,6 +558,8 @@ export async function startRepl({
   initialChain,
   saveModels,
   strictPrivacy = false,
+  apiKeys = {},
+  providers: availableProviders = [],
   telemetry = {},
   saveTelemetry = () => {},
 }) {
@@ -609,21 +612,32 @@ export async function startRepl({
       spinner.stop();
     }
 
+    // Group models by provider
+    const providerNames = {
+      openrouter: 'OpenRouter',
+      google: 'Google AI Studio',
+      groq: 'Groq',
+      mistral: 'Mistral',
+    };
+
     const sorted = [...models].sort((a, b) => {
+      const pa = a.provider || 'openrouter';
+      const pb = b.provider || 'openrouter';
+      if (pa !== pb) return pa.localeCompare(pb);
       const ca = modelCategory(a.id);
       const cb = modelCategory(b.id);
       return ca === cb ? 0 : ca === 'Coding' ? -1 : 1;
     });
 
     const options = sorted.map((m) => ({
-      label: m.id,
+      label: `${shortModelName(m.id)} (${providerNames[m.provider] || m.provider || 'openrouter'})`,
       value: m.id,
-      section: modelCategory(m.id),
+      section: providerNames[m.provider] || m.provider || 'OpenRouter',
       statusText: formatModelStatus(status.get(m.id)),
     }));
 
     if (!interactiveEnabled) {
-      console.log('\nFree tool-capable models on OpenRouter:');
+      console.log('\nFree tool-capable models:');
       options.forEach((o, i) => console.log(`${String(i + 1).padStart(3)}. ${o.label}  ${o.statusText}`));
       const answer = (await rl.question('Models in priority order (e.g. "1 3 2") > ')).trim();
       const idxs = [
@@ -712,7 +726,7 @@ export async function startRepl({
     bannerHealth = await fetchModelStatus(chain).catch(() => new Map());
     spinner.stop();
   }
-  printBanner({ chain, status: 'online', health: bannerHealth });
+  printBanner({ chain, status: 'online', health: bannerHealth, models });
 
   const ch = legacyConhost ? '-' : '─';
   const rule = () => dim(ch.repeat(process.stdout.columns || 80));
