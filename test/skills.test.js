@@ -74,7 +74,7 @@ test('bundled skill descriptions are readable sentences', () => {
   const skills = discoverSkills();
   const bundled = skills.filter(({ scope }) => scope === 'bundled');
 
-  assert.equal(bundled.length, 7);
+  assert.equal(bundled.length, 12);
   for (const skill of bundled) {
     assert.match(skill.description, /^(?:Build|Create|Design|Implement|Secure|Test|Use)\b/);
     assert.match(skill.description, /\.$/);
