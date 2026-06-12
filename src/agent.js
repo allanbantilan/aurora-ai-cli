@@ -50,7 +50,7 @@ export async function runTurn({
           tappedOnText, onReasoning, onRetry, retryDelayMs, stallMs, strictPrivacy
         );
       } catch (err) {
-        const availability = err.status === 429 || err.status >= 500 || err.stalled;
+        const availability = err.status === 429 || err.status >= 400 || err.stalled;
         const canFallback = availability && !streamedAnything && activeIndex < models.length - 1;
         if (!canFallback) throw err;
         const failed = models[activeIndex];
@@ -125,7 +125,7 @@ async function streamCompletion(client, model, messages, definitions, onText, on
       tools: definitions,
       stream: true,
       stream_options: { include_usage: true },
-      provider: { require_parameters: true, ...(strictPrivacy ? { data_collection: 'deny' } : {}) },
+      provider: { require_parameters: false, ...(strictPrivacy ? { data_collection: 'deny' } : {}) },
       parallel_tool_calls: false,
     }),
     2,
