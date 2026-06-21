@@ -12,6 +12,7 @@ import { loadApiKey, loadAllApiKeys, migratePlaintextKey, saveApiKey } from '../
 import { providers, getAvailableProviders } from '../src/providers/index.js';
 import { promptSecret } from '../src/secret.js';
 import { startRepl } from '../src/repl.js';
+import { resolveRunModels, runOneShot } from '../src/one-shot.js';
 
 const cli = parseCliArgs(process.argv.slice(2));
 if (cli.command === 'help') {
@@ -121,6 +122,31 @@ const initialChain = savedChain.filter((id) => models.some((m) => m.id === id));
 // Create client for the default provider (OpenRouter for backwards compatibility)
 const defaultProvider = availableProviders.find((p) => p.id === 'openrouter') || availableProviders[0];
 const client = defaultProvider.createClient(apiKeys[defaultProvider.id]);
+
+if (cli.command === 'run') {
+  try {
+    const chain = resolveRunModels({
+      requestedModel: cli.flags.model,
+      savedChain,
+      models,
+    });
+    const providerId = models.find((model) => model.id === chain[0])?.provider || defaultProvider.id;
+    const provider = providers[providerId] || defaultProvider;
+    const runClient = provider.createClient(apiKeys[provider.id]);
+
+    await runOneShot({
+      client: runClient,
+      models: chain,
+      task: cli.task,
+      yes: cli.flags.yes,
+      strictPrivacy,
+    });
+    process.exit(0);
+  } catch (err) {
+    console.error(err.message);
+    process.exit(1);
+  }
+}
 
 await startRepl({
   client,
