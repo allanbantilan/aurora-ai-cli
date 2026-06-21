@@ -12,6 +12,7 @@ import {
   createToolPayloadSuppressor,
   repairAbortedMessages,
   turnStatusLine,
+  mergeChain,
   claimsUnappliedChanges,
   isCommandFailure,
   commandFailureGuidance,
@@ -982,4 +983,24 @@ test('turnStatusLine fills the meter as usage climbs', () => {
 test('turnStatusLine degrades to a neutral meter when context is unknown', () => {
   const line = turnStatusLine({ cwd: '/w', chain: ['m'], models: [{ id: 'm' }], promptTokens: 5000 });
   assert.match(line, /░░░░░░░░░░/);
+});
+
+test('mergeChain preserves a curated fallback order when models are refreshed', () => {
+  const models = [{ id: 'a' }, { id: 'b' }, { id: 'c' }, { id: 'd' }];
+  assert.deepEqual(mergeChain(['c', 'a'], models), ['c', 'a', 'b']); // kept order, topped up to 3
+});
+
+test('mergeChain keeps a long curated chain intact without truncating', () => {
+  const models = [{ id: 'a' }, { id: 'b' }, { id: 'c' }, { id: 'd' }];
+  assert.deepEqual(mergeChain(['d', 'c', 'b', 'a'], models), ['d', 'c', 'b', 'a']);
+});
+
+test('mergeChain drops chain entries no longer available', () => {
+  const models = [{ id: 'a' }, { id: 'b' }];
+  assert.deepEqual(mergeChain(['gone', 'a'], models), ['a', 'b']);
+});
+
+test('mergeChain falls back to the head models when nothing is kept', () => {
+  const models = [{ id: 'x' }, { id: 'y' }, { id: 'z' }, { id: 'w' }];
+  assert.deepEqual(mergeChain([], models), ['x', 'y', 'z']);
 });

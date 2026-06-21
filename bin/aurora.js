@@ -12,7 +12,7 @@ import { createClient, fetchFreeToolModels } from '../src/client.js';
 import { loadApiKey, loadAllApiKeys, migratePlaintextKey, saveApiKey } from '../src/credentials.js';
 import { providers, getAvailableProviders } from '../src/providers/index.js';
 import { promptSecret } from '../src/secret.js';
-import { startRepl } from '../src/repl.js';
+import { startRepl, PROVIDER_INFO } from '../src/repl.js';
 import { resolveRunModels, runOneShot } from '../src/one-shot.js';
 
 const cli = parseCliArgs(process.argv.slice(2));
@@ -71,13 +71,14 @@ if (!availableProviders.length) {
   }
 
   // No providers configured - prompt for OpenRouter (default)
+  const { url, keyPrefix } = PROVIDER_INFO.openrouter;
   const key = await promptSecret('Paste your OpenRouter API key (or set OPENROUTER_API_KEY): ');
   if (!key || !key.trim()) {
-    console.error('An API key is required. Get one at https://openrouter.ai/keys');
+    console.error(`An API key is required. Get one at ${url}`);
     process.exit(1);
   }
-  if (!key.trim().startsWith('sk-')) {
-    console.error('OpenRouter API keys must start with sk-. Get one at https://openrouter.ai/keys');
+  if (keyPrefix && !key.trim().startsWith(keyPrefix)) {
+    console.error(`OpenRouter API keys must start with ${keyPrefix}. Get one at ${url}`);
     process.exit(1);
   }
   apiKeys.openrouter = key.trim();

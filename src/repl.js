@@ -571,7 +571,7 @@ export function executeMemoryCommand(command, store) {
     : `No matching [${command.scope}] memory found.`;
 }
 
-const PROVIDER_INFO = {
+export const PROVIDER_INFO = {
   openrouter: { name: 'OpenRouter', url: 'https://openrouter.ai/keys', keyPrefix: 'sk-', envKey: 'OPENROUTER_API_KEY', free: true },
   google: { name: 'Google AI Studio', url: 'https://aistudio.google.com/apikey', keyPrefix: '', envKey: 'GOOGLE_API_KEY', free: true },
   groq: { name: 'Groq', url: 'https://console.groq.com/keys', keyPrefix: 'gsk_', envKey: 'GROQ_API_KEY', free: true },
@@ -1021,7 +1021,7 @@ export async function startRepl({
         try {
           models = await fetchAllModels(apiKeys, telemetry);
           if (models.length) {
-            chain = models.slice(0, 3).map((m) => m.id);
+            chain = mergeChain(chain, models);
             saveModels(chain);
             console.log(dim(`models refreshed: ${models.length} models from ${new Set(models.map((m) => m.provider)).size} providers`));
           }
@@ -1462,6 +1462,24 @@ export function repairAbortedMessages(messages) {
     if (!complete) messages.length = i - 1; // drop the parent and its partial results
   }
   return messages;
+}
+
+/**
+ * Merge a freshly fetched model list into the user's existing chain after a
+ * provider is added: keep every still-valid chain entry in its curated order,
+ * then top up with newly available models only if the chain is shorter than
+ * `minSize`. Never silently discards a curated fallback order.
+ */
+export function mergeChain(currentChain, models, minSize = 3) {
+  const ids = models.map((m) => m.id);
+  const available = new Set(ids);
+  const kept = currentChain.filter((id) => available.has(id));
+  const result = [...kept];
+  for (const id of ids) {
+    if (result.length >= Math.max(minSize, kept.length)) break;
+    if (!result.includes(id)) result.push(id);
+  }
+  return result.length ? result : ids.slice(0, minSize);
 }
 
 /**
