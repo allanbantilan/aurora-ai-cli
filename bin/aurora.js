@@ -1,10 +1,22 @@
 #!/usr/bin/env node
+import { parseCliArgs, formatCliHelp } from '../src/cli.js';
 import { loadConfig, saveConfig, migrateConfig, getProviderConfig } from '../src/config.js';
 import { createClient, fetchFreeToolModels } from '../src/client.js';
 import { loadApiKey, loadAllApiKeys, migratePlaintextKey, saveApiKey } from '../src/credentials.js';
 import { providers, getAvailableProviders } from '../src/providers/index.js';
 import { promptSecret } from '../src/secret.js';
 import { startRepl } from '../src/repl.js';
+
+const cli = parseCliArgs(process.argv.slice(2));
+if (cli.command === 'help') {
+  console.log(formatCliHelp());
+  process.exit(0);
+}
+if (cli.command === 'error') {
+  console.error(cli.error);
+  console.error('Run aurora --help for usage.');
+  process.exit(1);
+}
 
 const config = loadConfig();
 if (migrateConfig(config)) saveConfig(config);
