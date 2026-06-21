@@ -26,7 +26,7 @@ export class BaseProvider {
    * Fetch available models from this provider.
    * Returns: [{ id, name, context, pricing, supported_parameters }]
    */
-  async fetchModels() {
+  async fetchModels(_apiKey) {
     throw new Error('Provider must implement fetchModels()');
   }
 

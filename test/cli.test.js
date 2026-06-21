@@ -1,6 +1,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseCliArgs, formatCliHelp } from '../src/cli.js';
+import {
+  parseCliArgs,
+  formatCliHelp,
+  formatProviderRows,
+  formatModelRows,
+  providerStatusRows,
+  providerTier,
+} from '../src/cli.js';
 
 test('parseCliArgs defaults to chat', () => {
   assert.deepEqual(parseCliArgs([]), { command: 'chat', flags: {}, task: '' });
@@ -42,4 +49,56 @@ test('formatCliHelp documents public commands', () => {
   for (const text of ['aurora', 'aurora chat', 'aurora models', 'aurora providers', 'aurora doctor', 'aurora run', '--model', '--yes']) {
     assert.match(help, new RegExp(text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
   }
+});
+
+test('providerTier distinguishes free and paid providers', () => {
+  assert.equal(providerTier('openrouter'), 'free');
+  assert.equal(providerTier('google'), 'free');
+  assert.equal(providerTier('groq'), 'free');
+  assert.equal(providerTier('mistral'), 'free');
+  assert.equal(providerTier('anthropic'), 'paid');
+  assert.equal(providerTier('openai'), 'paid');
+});
+
+test('formatProviderRows distinguishes configured and failed states', () => {
+  const rows = formatProviderRows([
+    { id: 'openrouter', name: 'OpenRouter', status: 'usable' },
+    { id: 'groq', name: 'Groq', status: 'fetch failed', error: 'HTTP 401' },
+    { id: 'openai', name: 'OpenAI', status: 'not configured' },
+  ]);
+  assert.match(rows, /OpenRouter\s+usable\s+free/);
+  assert.match(rows, /Groq\s+fetch failed: HTTP 401\s+free/);
+  assert.match(rows, /OpenAI\s+not configured\s+paid/);
+});
+
+test('formatModelRows uses available model heading and tier labels', () => {
+  const out = formatModelRows([
+    { id: 'qwen3-coder', provider: 'openrouter' },
+    { id: 'claude-sonnet-4-20250514', provider: 'anthropic' },
+  ]);
+  assert.match(out, /Available tool-capable models:/);
+  assert.doesNotMatch(out, /Free tool-capable models/);
+  assert.match(out, /qwen3-coder \(OpenRouter, free\)/);
+  assert.match(out, /claude-sonnet-4-20250514 \(Anthropic, paid\)/);
+});
+
+test('providerStatusRows derives configured status from loaded apiKeys', () => {
+  const rows = providerStatusRows(
+    [
+      { id: 'openrouter', name: 'OpenRouter' },
+      { id: 'google', name: 'Google AI Studio' },
+      { id: 'openai', name: 'OpenAI' },
+    ],
+    {
+      openrouter: 'sk-env-key',
+      google: '',
+      openai: 'sk-credential-store-key',
+    }
+  );
+
+  assert.deepEqual(rows, [
+    { id: 'openrouter', name: 'OpenRouter', status: 'configured' },
+    { id: 'google', name: 'Google AI Studio', status: 'not configured' },
+    { id: 'openai', name: 'OpenAI', status: 'configured' },
+  ]);
 });

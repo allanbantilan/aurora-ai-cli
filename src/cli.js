@@ -1,5 +1,14 @@
 const COMMANDS = new Set(['chat', 'help', 'models', 'providers', 'doctor', 'run']);
 const NO_ARG_COMMANDS = new Set(['chat', 'models', 'providers', 'doctor']);
+const PROVIDER_NAMES = {
+  openrouter: 'OpenRouter',
+  google: 'Google AI Studio',
+  groq: 'Groq',
+  mistral: 'Mistral',
+  anthropic: 'Anthropic',
+  openai: 'OpenAI',
+};
+const PAID_PROVIDERS = new Set(['anthropic', 'openai']);
 
 export function parseCliArgs(argv = []) {
   const args = [...argv];
@@ -67,4 +76,38 @@ export function formatCliHelp() {
     '  --model <id>   Use a specific model id',
     '  --yes, -y      Allow file changes and shell commands',
   ].join('\n');
+}
+
+export function providerName(id) {
+  return PROVIDER_NAMES[id] || id;
+}
+
+export function providerTier(id) {
+  return PAID_PROVIDERS.has(id) ? 'paid' : 'free';
+}
+
+export function providerStatusRows(providers, apiKeys = {}) {
+  return providers.map((provider) => ({
+    id: provider.id,
+    name: provider.name,
+    status: apiKeys[provider.id] ? 'configured' : 'not configured',
+  }));
+}
+
+export function formatProviderRows(rows) {
+  return rows
+    .map((row) => {
+      const status = row.status === 'fetch failed' ? `fetch failed: ${row.error}` : row.status;
+      return `${row.name.padEnd(20)} ${status.padEnd(24)} ${providerTier(row.id)}`;
+    })
+    .join('\n');
+}
+
+export function formatModelRows(models) {
+  const lines = ['Available tool-capable models:'];
+  models.forEach((model, index) => {
+    const provider = model.provider || 'openrouter';
+    lines.push(`${String(index + 1).padStart(3)}. ${model.id} (${providerName(provider)}, ${providerTier(provider)})`);
+  });
+  return lines.join('\n');
 }

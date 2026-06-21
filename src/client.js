@@ -67,8 +67,8 @@ export async function fetchFreeToolModels(telemetry = {}) {
 /**
  * Fetch models from a specific provider.
  */
-export async function fetchModelsFromProvider(provider, telemetry = {}) {
-  const models = await provider.fetchModels();
+export async function fetchModelsFromProvider(provider, apiKey, telemetry = {}) {
+  const models = await provider.fetchModels(apiKey);
   const filtered = provider.filterFreeToolModels(models);
   return filtered.map((m) => ({ ...m, provider: provider.id }));
 }
@@ -82,7 +82,7 @@ export async function fetchAllModels(apiKeys, telemetry = {}) {
     const key = apiKeys[provider.id];
     if (!key || !provider.isAvailable(key)) continue;
     try {
-      const models = await fetchModelsFromProvider(provider, telemetry);
+      const models = await fetchModelsFromProvider(provider, key, telemetry);
       allModels.push(...models);
     } catch (err) {
       console.error(`[warn] ${provider.name} model fetch failed: ${err.message}`);

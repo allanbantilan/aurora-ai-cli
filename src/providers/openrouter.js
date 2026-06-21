@@ -28,7 +28,7 @@ export class OpenRouterProvider extends BaseProvider {
     return new OpenAI({ apiKey, baseURL: BASE_URL, maxRetries: 0 });
   }
 
-  async fetchModels() {
+  async fetchModels(_apiKey) {
     const res = await fetch(`${BASE_URL}/models`);
     if (!res.ok) throw new Error(`OpenRouter model list fetch failed: HTTP ${res.status}`);
     const { data } = await res.json();

@@ -33,8 +33,7 @@ export class AnthropicProvider extends BaseProvider {
     });
   }
 
-  async fetchModels() {
-    const apiKey = this.getApiKey();
+  async fetchModels(apiKey = this.getApiKey()) {
     if (!apiKey) return [];
 
     const models = [

@@ -15,6 +15,7 @@ import { loadInstructions, formatInstructionContext } from './instructions.js';
 import { activateSkills, discoverSkills, formatSkillCatalog } from './skills.js';
 import { compactMessages, shouldCompact } from './context.js';
 import { recordModelEvent } from './telemetry.js';
+import { providerName, providerTier } from './cli.js';
 import { createAgentPermissions, discoverCustomAgents, routeCustomAgentInput, runIsolatedAgentSafely } from './custom-agents.js';
 import { saveApiKey as saveProviderKey, loadApiKey as loadProviderKey } from './credentials.js';
 import { providers as allProviders } from './providers/index.js';
@@ -27,7 +28,6 @@ import {
   formatModelStatus,
   shortModelName,
   modelCategory,
-  providerDisplayName,
   interactiveEnabled,
   legacyConhost,
   cyan,
@@ -754,14 +754,6 @@ export async function startRepl({
       spinner.stop();
     }
 
-    // Group models by provider
-    const providerNames = {
-      openrouter: 'OpenRouter',
-      google: 'Google AI Studio',
-      groq: 'Groq',
-      mistral: 'Mistral',
-    };
-
     const sorted = [...models].sort((a, b) => {
       const pa = a.provider || 'openrouter';
       const pb = b.provider || 'openrouter';
@@ -772,14 +764,14 @@ export async function startRepl({
     });
 
     const options = sorted.map((m) => ({
-      label: `${shortModelName(m.id)} (${providerNames[m.provider] || m.provider || 'openrouter'})`,
+      label: `${shortModelName(m.id)} (${providerName(m.provider || 'openrouter')}, ${providerTier(m.provider || 'openrouter')})`,
       value: m.id,
-      section: providerNames[m.provider] || m.provider || 'OpenRouter',
+      section: providerName(m.provider || 'openrouter'),
       statusText: formatModelStatus(status.get(m.id)),
     }));
 
     if (!interactiveEnabled) {
-      console.log('\nFree tool-capable models:');
+      console.log('\nAvailable tool-capable models:');
       options.forEach((o, i) => console.log(`${String(i + 1).padStart(3)}. ${o.label}  ${o.statusText}`));
       const answer = (await rl.question('Models in priority order (e.g. "1 3 2") > ')).trim();
       const idxs = [

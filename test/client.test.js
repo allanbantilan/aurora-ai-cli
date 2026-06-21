@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { filterFreeToolModels, withRetry, fetchModelStatus } from '../src/client.js';
+import { providers } from '../src/providers/index.js';
 
 const fixture = [
   {
@@ -158,4 +159,42 @@ test('fetchModelStatus maps failures to null without rejecting', async () => {
   assert.equal(map.get('d/model-d'), null);
   assert.equal(map.get('e/model-e'), null);
   assert.deepEqual(map.get('f/model-f'), { uptime: null, ok: true }); // live but no uptime data
+});
+
+test('fetchAllModels passes loaded provider keys to fetchModels', async () => {
+  const { fetchAllModels } = await import('../src/client.js');
+  const seen = [];
+  providers.testloaded = {
+    id: 'testloaded',
+    name: 'Test Loaded',
+    isAvailable: (key) => key === 'loaded-key',
+    fetchModels: async (key) => {
+      seen.push(key);
+      return [
+        {
+          id: 'loaded/model',
+          name: 'Loaded Model',
+          context: 8192,
+          supported_parameters: ['tools'],
+        },
+      ];
+    },
+    filterFreeToolModels: (models) => models,
+  };
+
+  try {
+    const models = await fetchAllModels({ testloaded: 'loaded-key' });
+    assert.deepEqual(seen, ['loaded-key']);
+    assert.deepEqual(models, [
+      {
+        id: 'loaded/model',
+        name: 'Loaded Model',
+        context: 8192,
+        supported_parameters: ['tools'],
+        provider: 'testloaded',
+      },
+    ]);
+  } finally {
+    delete providers.testloaded;
+  }
 });

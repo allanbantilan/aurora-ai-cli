@@ -1,5 +1,11 @@
 #!/usr/bin/env node
-import { parseCliArgs, formatCliHelp } from '../src/cli.js';
+import {
+  parseCliArgs,
+  formatCliHelp,
+  formatModelRows,
+  formatProviderRows,
+  providerStatusRows,
+} from '../src/cli.js';
 import { loadConfig, saveConfig, migrateConfig, getProviderConfig } from '../src/config.js';
 import { createClient, fetchFreeToolModels } from '../src/client.js';
 import { loadApiKey, loadAllApiKeys, migratePlaintextKey, saveApiKey } from '../src/credentials.js';
@@ -19,6 +25,13 @@ if (cli.command === 'error') {
 }
 
 const config = loadConfig();
+
+if (cli.command === 'providers') {
+  const apiKeys = await loadAllApiKeys({ config });
+  console.log(formatProviderRows(providerStatusRows(Object.values(providers), apiKeys)));
+  process.exit(0);
+}
+
 if (migrateConfig(config)) saveConfig(config);
 if (await migratePlaintextKey({ config })) saveConfig(config);
 
@@ -33,6 +46,17 @@ const availableProviders = Object.values(providers).filter((p) => {
 });
 
 if (!availableProviders.length) {
+  if (cli.command === 'models') {
+    console.log(formatProviderRows(Object.values(providers).map((provider) => ({
+      id: provider.id,
+      name: provider.name,
+      status: 'not configured',
+    }))));
+    console.log();
+    console.log(formatModelRows([]));
+    process.exit(1);
+  }
+
   // No providers configured - prompt for OpenRouter (default)
   const key = await promptSecret('Paste your OpenRouter API key (or set OPENROUTER_API_KEY): ');
   if (!key || !key.trim()) {
@@ -60,15 +84,25 @@ const strictPrivacy = config.strictPrivacy === true;
 const savedChain = Array.isArray(config.lastModels) ? config.lastModels : [];
 
 // Fetch models from all available providers
+const providerStatuses = [];
 let models = [];
 for (const provider of availableProviders) {
   try {
-    const providerModels = await provider.fetchModels();
+    const providerModels = await provider.fetchModels(apiKeys[provider.id]);
     const filtered = provider.filterFreeToolModels(providerModels);
     models.push(...filtered.map((m) => ({ ...m, provider: provider.id })));
+    providerStatuses.push({ id: provider.id, name: provider.name, status: 'usable' });
   } catch (err) {
+    providerStatuses.push({ id: provider.id, name: provider.name, status: 'fetch failed', error: err.message });
     console.error(`[warn] ${provider.name} model fetch failed: ${err.message}`);
   }
+}
+
+if (cli.command === 'models') {
+  console.log(formatProviderRows(providerStatuses));
+  console.log();
+  console.log(formatModelRows(models));
+  process.exit(models.length ? 0 : 1);
 }
 
 if (!models.length) {

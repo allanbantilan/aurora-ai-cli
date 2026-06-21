@@ -28,8 +28,7 @@ export class OpenAIProvider extends BaseProvider {
     return new OpenAI({ apiKey, baseURL: BASE_URL, maxRetries: 0 });
   }
 
-  async fetchModels() {
-    const apiKey = this.getApiKey();
+  async fetchModels(apiKey = this.getApiKey()) {
     if (!apiKey) return [];
 
     const models = [
