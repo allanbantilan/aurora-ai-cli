@@ -708,10 +708,21 @@ export async function startRepl({
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout, completer: completeCommand });
   let mode = 'permission';
   let autoConfirmed = false;
+  // Set while a turn is in flight; Ctrl+C aborts the turn instead of exiting.
+  let turnAbort = null;
+  let turnCancelled = false;
 
   // readline intercepts Ctrl+C and emits SIGINT on the interface; without this
   // listener the process can never be interrupted (it just pauses stdin).
   rl.on('SIGINT', () => {
+    // First Ctrl+C during a running turn cancels it and returns to the prompt;
+    // at the idle prompt (no turn in flight) Ctrl+C exits.
+    if (turnAbort) {
+      turnCancelled = true;
+      turnAbort.abort();
+      turnAbort = null;
+      return;
+    }
     console.log('\n(interrupted — exiting)');
     rl.close();
     process.exit(0);
@@ -1095,6 +1106,8 @@ export async function startRepl({
     let environmentRetried = false;
     let toolPayloadRetried = false;
     let lastCommand = '';
+    turnCancelled = false;
+    turnAbort = new AbortController();
     try {
       while (input) {
         messages.push({ role: 'user', content: input });
@@ -1132,6 +1145,7 @@ export async function startRepl({
             featureSession: Boolean(completionSession.featureName) || completionSession.buildCheck,
           }),
           strictPrivacy,
+          signal: turnAbort.signal,
           onUsage: (usage) => {
             if (Number.isFinite(usage?.prompt_tokens)) latestPromptTokens = usage.prompt_tokens;
           },
@@ -1371,9 +1385,20 @@ export async function startRepl({
       }
     } catch (err) {
       activityGroup.flush();
-      const hint = err.status === 429 || err.status >= 500 ? ' — all models in your chain failed; try /model' : '';
-      console.error(`\n${red(`[error] ${err.message}`)}${hint}`);
+      spinner.stop();
+      if (turnCancelled || err?.aborted || err?.name === 'AbortError') {
+        // user cancelled this turn — leave messages in an API-valid shape
+        repairAbortedMessages(messages);
+        console.log(dim('\n(turn cancelled)'));
+      } else if (err?.iterationCap) {
+        // hitting the safety cap is expected on big tasks — not a red error
+        console.log(yellow(`\n⚠ ${err.message}`));
+      } else {
+        const hint = err.status === 429 || err.status >= 500 ? ' — all models in your chain failed; try /model' : '';
+        console.error(`\n${red(`[error] ${err.message}`)}${hint}`);
+      }
     } finally {
+      turnAbort = null;
       spinner.stop();
       if (previousModeAfterTurn) {
         const restored = endPlanTurn({ previousMode: previousModeAfterTurn, messages, cwd, context: currentContext() });
@@ -1404,6 +1429,26 @@ const CLAIM_RE = new RegExp(
   `(?:\\b(?:I|we)(?:'ve| have)? |(?:^|[.!?]\\s+)\\**)(?:${CLAIM_VERBS})\\b`,
   'im'
 );
+
+/**
+ * Repair messages after a mid-turn cancellation. A turn aborted between tool
+ * calls can leave an assistant `tool_calls` message with only some of its tool
+ * results — an invalid shape the API rejects (400). Drop the trailing run of
+ * tool messages together with their parent assistant message when not every
+ * tool_call was answered. Mutates `messages` in place; returns it.
+ */
+export function repairAbortedMessages(messages) {
+  let i = messages.length;
+  while (i > 0 && messages[i - 1].role === 'tool') i -= 1;
+  const trailingTools = messages.slice(i);
+  const parent = messages[i - 1];
+  if (parent?.role === 'assistant' && Array.isArray(parent.tool_calls) && parent.tool_calls.length) {
+    const answered = new Set(trailingTools.map((m) => m.tool_call_id));
+    const complete = parent.tool_calls.every((tc) => answered.has(tc.id));
+    if (!complete) messages.length = i - 1; // drop the parent and its partial results
+  }
+  return messages;
+}
 
 /**
  * Fallback promotion: `to` becomes the active head, `from` leaves the chain

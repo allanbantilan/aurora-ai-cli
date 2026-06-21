@@ -34,11 +34,13 @@ export async function runTurn({
   retryDelayMs = 2000,
   stallMs = 30_000,
   strictPrivacy = false,
+  signal,
 }) {
   let activeIndex = 0;
 
   const complete = async () => {
     for (;;) {
+      if (signal?.aborted) throw turnAbortedError();
       let streamedAnything = false;
       const tappedOnText = (t) => {
         streamedAnything = true;
@@ -47,9 +49,10 @@ export async function runTurn({
       try {
         return await streamCompletion(
           client, models[activeIndex], messages, tools.definitions,
-          tappedOnText, onReasoning, onRetry, retryDelayMs, stallMs, strictPrivacy
+          tappedOnText, onReasoning, onRetry, retryDelayMs, stallMs, strictPrivacy, signal
         );
       } catch (err) {
+        if (signal?.aborted) throw turnAbortedError();
         // Retryable across models: rate limits, server errors, model-not-found
         // (worth failing over on a multi-model proxy), and stalls. A 400/401/403
         // fails identically on every model, so it propagates immediately instead
@@ -76,6 +79,7 @@ export async function runTurn({
     if (!toolCalls.length) return;
 
     for (const call of toolCalls) {
+      if (signal?.aborted) throw turnAbortedError();
       const name = call.function.name;
       let result;
       let args = {};
@@ -101,7 +105,14 @@ export async function runTurn({
       messages.push({ role: 'tool', tool_call_id: call.id, content: result });
     }
   }
-  throw new Error(`Stopped after ${maxIterations} tool iterations. Ask the user how to proceed.`);
+  throw Object.assign(new Error(`Stopped after ${maxIterations} tool iterations. Ask the user how to proceed.`), {
+    iterationCap: true,
+  });
+}
+
+/** Tagged error for a user-cancelled turn — never treated as a model-availability failure. */
+function turnAbortedError() {
+  return Object.assign(new Error('Turn cancelled by user.'), { aborted: true });
 }
 
 /** Race one stream read against the inter-delta stall timer. */
@@ -122,7 +133,7 @@ function nextWithStall(it, stallMs, model) {
 }
 
 /** Stream one completion, accumulating text and tool-call deltas. */
-async function streamCompletion(client, model, messages, definitions, onText, onReasoning, onRetry, retryDelayMs = 2000, stallMs = 30_000, strictPrivacy = false) {
+async function streamCompletion(client, model, messages, definitions, onText, onReasoning, onRetry, retryDelayMs = 2000, stallMs = 30_000, strictPrivacy = false, signal) {
   // `provider` (and its data_collection knob) is an OpenRouter-only body
   // extension. Sent to api.openai.com / Google / Anthropic — all reached via the
   // OpenAI SDK with a different baseURL — it is an unrecognized parameter and the
@@ -140,7 +151,7 @@ async function streamCompletion(client, model, messages, definitions, onText, on
       stream_options: { include_usage: true },
       parallel_tool_calls: false,
       ...openRouterParams,
-    }),
+    }, { signal }),
     2,
     retryDelayMs,
     onRetry

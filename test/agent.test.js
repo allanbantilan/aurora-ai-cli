@@ -376,6 +376,47 @@ test('falls back on 404 model-not-found', async () => {
   assert.equal(messages.at(-1).content, 'answer');
 });
 
+test('an aborted signal cancels the turn without falling back', async () => {
+  let switched = false;
+  const controller = new AbortController();
+  controller.abort();
+  const client = modelClient({
+    'a/m': () => textStream('should not run'),
+    'b/m': () => textStream('never'),
+  });
+  await assert.rejects(
+    runTurn({
+      client,
+      models: ['a/m', 'b/m'],
+      messages: [{ role: 'user', content: 'hi' }],
+      tools: fakeTools(async () => 'unused'),
+      permissions: allowAll,
+      signal: controller.signal,
+      onModelSwitch: () => { switched = true; },
+    }),
+    (err) => err.aborted === true
+  );
+  assert.equal(switched, false);
+});
+
+test('signal is forwarded to the SDK as a request option', async () => {
+  let captured;
+  const controller = new AbortController();
+  const client = {
+    baseURL: 'https://openrouter.ai/api/v1',
+    chat: { completions: { create: async (_params, options) => { captured = options; return textStream('ok'); } } },
+  };
+  await runTurn({
+    client,
+    models: ['m'],
+    messages: [{ role: 'user', content: 'x' }],
+    tools: fakeTools(async () => 'unused'),
+    permissions: allowAll,
+    signal: controller.signal,
+  });
+  assert.equal(captured.signal, controller.signal);
+});
+
 function hangingStream(firstChunks) {
   return {
     async *[Symbol.asyncIterator]() {

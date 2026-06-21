@@ -10,6 +10,7 @@ import {
   buildInputPrompt,
   createEchoSuppressor,
   createToolPayloadSuppressor,
+  repairAbortedMessages,
   claimsUnappliedChanges,
   isCommandFailure,
   commandFailureGuidance,
@@ -922,4 +923,39 @@ test('createTickFilter harvests a trailing tick line without newline on flush', 
 
 test('PHANTOM_RETRY_PROMPT tells the model to apply changes with tools', () => {
   assert.match(PHANTOM_RETRY_PROMPT, /apply.*changes.*file tools/i);
+});
+
+test('repairAbortedMessages drops an assistant tool_calls message with incomplete results', () => {
+  const messages = [
+    { role: 'system', content: 'rules' },
+    { role: 'user', content: 'do it' },
+    { role: 'assistant', content: null, tool_calls: [
+      { id: 'c1', type: 'function', function: { name: 'read_file', arguments: '{}' } },
+      { id: 'c2', type: 'function', function: { name: 'grep', arguments: '{}' } },
+    ] },
+    { role: 'tool', tool_call_id: 'c1', content: 'only one answered' },
+  ];
+  repairAbortedMessages(messages);
+  assert.equal(messages.length, 2);
+  assert.equal(messages.at(-1).content, 'do it');
+});
+
+test('repairAbortedMessages keeps a complete assistant tool_calls sequence', () => {
+  const messages = [
+    { role: 'user', content: 'do it' },
+    { role: 'assistant', content: null, tool_calls: [{ id: 'c1', type: 'function', function: { name: 'read_file', arguments: '{}' } }] },
+    { role: 'tool', tool_call_id: 'c1', content: 'answered' },
+  ];
+  const before = messages.length;
+  repairAbortedMessages(messages);
+  assert.equal(messages.length, before);
+});
+
+test('repairAbortedMessages leaves plain text turns untouched', () => {
+  const messages = [
+    { role: 'user', content: 'hi' },
+    { role: 'assistant', content: 'hello' },
+  ];
+  repairAbortedMessages(messages);
+  assert.equal(messages.length, 2);
 });
