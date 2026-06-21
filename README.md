@@ -46,6 +46,10 @@ Useful commands:
 - `/plan`
 - `/skills`
 - `/agents`
+- `/memory`
+- `/remember`
+- `/forget`
+- `/clear`
 - `/exit`
 
 ## One-Shot Usage
