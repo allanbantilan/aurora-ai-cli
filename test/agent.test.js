@@ -542,9 +542,12 @@ test('streams without usage data never fire onUsage', async () => {
   assert.equal(fired, false);
 });
 
+const OPENROUTER_URL = 'https://openrouter.ai/api/v1';
+
 test('completion requests opt in to usage reporting via stream_options', async () => {
   let captured;
   const client = {
+    baseURL: OPENROUTER_URL,
     chat: {
       completions: {
         create: async (params) => {
@@ -566,9 +569,9 @@ test('completion requests opt in to usage reporting via stream_options', async (
   assert.equal(captured.parallel_tool_calls, false);
 });
 
-test('strict privacy denies provider data collection', async () => {
+test('strict privacy denies provider data collection (OpenRouter)', async () => {
   let captured;
-  const client = { chat: { completions: { create: async (params) => { captured = params; return textStream('ok'); } } } };
+  const client = { baseURL: OPENROUTER_URL, chat: { completions: { create: async (params) => { captured = params; return textStream('ok'); } } } };
   await runTurn({
     client,
     models: ['m'],
@@ -578,4 +581,21 @@ test('strict privacy denies provider data collection', async () => {
     strictPrivacy: true,
   });
   assert.deepEqual(captured.provider, { require_parameters: false, data_collection: 'deny' });
+});
+
+test('non-OpenRouter providers never receive the provider extension', async () => {
+  for (const baseURL of ['https://api.openai.com/v1', 'https://generativelanguage.googleapis.com/v1beta/openai']) {
+    let captured;
+    const client = { baseURL, chat: { completions: { create: async (params) => { captured = params; return textStream('ok'); } } } };
+    await runTurn({
+      client,
+      models: ['m'],
+      messages: [{ role: 'user', content: 'x' }],
+      tools: fakeTools(async () => 'unused'),
+      permissions: allowAll,
+      strictPrivacy: true, // even under strict privacy, the OpenRouter-only knob is omitted
+    });
+    assert.equal(captured.provider, undefined, `${baseURL} should not get provider`);
+    assert.equal(captured.parallel_tool_calls, false); // standard OpenAI param stays
+  }
 });

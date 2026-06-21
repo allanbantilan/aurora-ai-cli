@@ -123,6 +123,14 @@ function nextWithStall(it, stallMs, model) {
 
 /** Stream one completion, accumulating text and tool-call deltas. */
 async function streamCompletion(client, model, messages, definitions, onText, onReasoning, onRetry, retryDelayMs = 2000, stallMs = 30_000, strictPrivacy = false) {
+  // `provider` (and its data_collection knob) is an OpenRouter-only body
+  // extension. Sent to api.openai.com / Google / Anthropic — all reached via the
+  // OpenAI SDK with a different baseURL — it is an unrecognized parameter and the
+  // request 400s. Attach it only when actually talking to OpenRouter.
+  const isOpenRouter = /openrouter\.ai/i.test(client.baseURL ?? '');
+  const openRouterParams = isOpenRouter
+    ? { provider: { require_parameters: false, ...(strictPrivacy ? { data_collection: 'deny' } : {}) } }
+    : {};
   const stream = await withRetry(
     () => client.chat.completions.create({
       model,
@@ -130,8 +138,8 @@ async function streamCompletion(client, model, messages, definitions, onText, on
       tools: definitions,
       stream: true,
       stream_options: { include_usage: true },
-      provider: { require_parameters: false, ...(strictPrivacy ? { data_collection: 'deny' } : {}) },
       parallel_tool_calls: false,
+      ...openRouterParams,
     }),
     2,
     retryDelayMs,
