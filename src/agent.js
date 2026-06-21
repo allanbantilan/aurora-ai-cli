@@ -50,7 +50,12 @@ export async function runTurn({
           tappedOnText, onReasoning, onRetry, retryDelayMs, stallMs, strictPrivacy
         );
       } catch (err) {
-        const availability = err.status === 429 || err.status >= 400 || err.stalled;
+        // Retryable across models: rate limits, server errors, model-not-found
+        // (worth failing over on a multi-model proxy), and stalls. A 400/401/403
+        // fails identically on every model, so it propagates immediately instead
+        // of silently burning the whole chain.
+        const availability =
+          err.status === 429 || err.status >= 500 || err.status === 404 || err.stalled;
         const canFallback = availability && !streamedAnything && activeIndex < models.length - 1;
         if (!canFallback) throw err;
         const failed = models[activeIndex];

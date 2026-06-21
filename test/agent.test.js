@@ -333,22 +333,47 @@ test('throws when every model in the chain is exhausted', async () => {
   );
 });
 
-test('does not fall back on non-availability errors', async () => {
-  let switched = false;
+test('does not fall back on non-availability errors (400/401/403)', async () => {
+  for (const status of [400, 401, 403]) {
+    let switched = false;
+    const client = modelClient({
+      'a/m': () => { throw Object.assign(new Error('client error'), { status }); },
+      'b/m': () => textStream('never'),
+    });
+    await assert.rejects(
+      runTurn({
+        client,
+        models: ['a/m', 'b/m'],
+        messages: [{ role: 'user', content: 'hi' }],
+        tools: fakeTools(async () => 'unused'),
+        permissions: allowAll,
+        retryDelayMs: 0,
+        onModelSwitch: () => { switched = true; },
+      }),
+      /client error/
+    );
+    assert.equal(switched, false, `status ${status} should not fall back`);
+  }
+});
+
+test('falls back on 404 model-not-found', async () => {
+  const switches = [];
   const client = modelClient({
-    'a/m': () => { throw Object.assign(new Error('bad request'), { status: 400 }); },
-    'b/m': () => textStream('never'),
+    'a/missing': () => { throw Object.assign(new Error('no such model'), { status: 404 }); },
+    'b/solid': () => textStream('answer'),
   });
+  const messages = [{ role: 'user', content: 'hi' }];
   await runTurn({
     client,
-    models: ['a/m', 'b/m'],
-    messages: [{ role: 'user', content: 'hi' }],
+    models: ['a/missing', 'b/solid'],
+    messages,
     tools: fakeTools(async () => 'unused'),
     permissions: allowAll,
     retryDelayMs: 0,
-    onModelSwitch: () => { switched = true; },
+    onModelSwitch: (from, to) => switches.push([from, to]),
   });
-  assert.equal(switched, true);
+  assert.deepEqual(switches, [['a/missing', 'b/solid']]);
+  assert.equal(messages.at(-1).content, 'answer');
 });
 
 function hangingStream(firstChunks) {
