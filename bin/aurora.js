@@ -5,6 +5,7 @@ import {
   formatModelRows,
   formatProviderRows,
   providerStatusRows,
+  formatDoctorReport,
 } from '../src/cli.js';
 import { loadConfig, saveConfig, migrateConfig, getProviderConfig } from '../src/config.js';
 import { createClient, fetchFreeToolModels } from '../src/client.js';
@@ -46,6 +47,8 @@ const availableProviders = Object.values(providers).filter((p) => {
   return key && p.isAvailable(key);
 });
 
+const nodeOk = Number(process.versions.node.split('.')[0]) >= 20;
+
 if (!availableProviders.length) {
   if (cli.command === 'models') {
     console.log(formatProviderRows(Object.values(providers).map((provider) => ({
@@ -55,6 +58,15 @@ if (!availableProviders.length) {
     }))));
     console.log();
     console.log(formatModelRows([]));
+    process.exit(1);
+  }
+
+  if (cli.command === 'doctor') {
+    console.log(formatDoctorReport({
+      nodeOk,
+      providers: providerStatusRows(Object.values(providers), apiKeys),
+      models: [],
+    }));
     process.exit(1);
   }
 
@@ -104,6 +116,11 @@ if (cli.command === 'models') {
   console.log();
   console.log(formatModelRows(models));
   process.exit(models.length ? 0 : 1);
+}
+
+if (cli.command === 'doctor') {
+  console.log(formatDoctorReport({ nodeOk, providers: providerStatuses, models }));
+  process.exit(nodeOk && models.length ? 0 : 1);
 }
 
 if (!models.length) {

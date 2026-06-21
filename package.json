@@ -1,7 +1,7 @@
 {
   "name": "aurora",
   "version": "0.1.0",
-  "description": "CLI coding agent powered by free OpenRouter models",
+  "description": "CLI coding agent with tool use, provider fallback, and Laravel-aware workflows",
   "type": "module",
   "bin": {
     "aurora": "bin/aurora.js"

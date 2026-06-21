@@ -7,6 +7,7 @@ import {
   formatModelRows,
   providerStatusRows,
   providerTier,
+  formatDoctorReport,
 } from '../src/cli.js';
 
 test('parseCliArgs defaults to chat', () => {
@@ -101,4 +102,15 @@ test('providerStatusRows derives configured status from loaded apiKeys', () => {
     { id: 'google', name: 'Google AI Studio', status: 'not configured' },
     { id: 'openai', name: 'OpenAI', status: 'configured' },
   ]);
+});
+
+test('formatDoctorReport gives actionable setup output', () => {
+  const out = formatDoctorReport({
+    nodeOk: true,
+    providers: [{ id: 'openrouter', name: 'OpenRouter', status: 'not configured' }],
+    models: [],
+  });
+  assert.match(out, /Node.js/);
+  assert.match(out, /OpenRouter/);
+  assert.match(out, /https:\/\/openrouter.ai\/keys/);
 });

@@ -9,6 +9,14 @@ const PROVIDER_NAMES = {
   openai: 'OpenAI',
 };
 const PAID_PROVIDERS = new Set(['anthropic', 'openai']);
+const PROVIDER_URLS = {
+  openrouter: 'https://openrouter.ai/keys',
+  google: 'https://aistudio.google.com/apikey',
+  groq: 'https://console.groq.com/keys',
+  mistral: 'https://console.mistral.ai/api-keys',
+  anthropic: 'https://console.anthropic.com/',
+  openai: 'https://platform.openai.com/api-keys',
+};
 
 export function parseCliArgs(argv = []) {
   const args = [...argv];
@@ -109,5 +117,20 @@ export function formatModelRows(models) {
     const provider = model.provider || 'openrouter';
     lines.push(`${String(index + 1).padStart(3)}. ${model.id} (${providerName(provider)}, ${providerTier(provider)})`);
   });
+  return lines.join('\n');
+}
+
+export function providerSetupUrl(id) {
+  return PROVIDER_URLS[id] || '';
+}
+
+export function formatDoctorReport({ nodeOk, providers = [], models = [] }) {
+  const lines = ['Aurora doctor', '', `Node.js: ${nodeOk ? 'ok' : 'requires Node 20+'}`, '', 'Providers:'];
+  for (const provider of providers) {
+    const setup = provider.status === 'not configured' ? ` (${providerSetupUrl(provider.id)})` : '';
+    const status = provider.status === 'fetch failed' ? `fetch failed: ${provider.error}` : provider.status;
+    lines.push(`  ${provider.name}: ${status}${setup}`);
+  }
+  lines.push('', `Models: ${models.length ? `${models.length} usable` : 'none usable'}`);
   return lines.join('\n');
 }
