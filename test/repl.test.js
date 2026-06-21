@@ -11,6 +11,7 @@ import {
   createEchoSuppressor,
   createToolPayloadSuppressor,
   repairAbortedMessages,
+  turnStatusLine,
   claimsUnappliedChanges,
   isCommandFailure,
   commandFailureGuidance,
@@ -958,4 +959,27 @@ test('repairAbortedMessages leaves plain text turns untouched', () => {
   ];
   repairAbortedMessages(messages);
   assert.equal(messages.length, 2);
+});
+
+test('turnStatusLine shows the active model and a context meter', () => {
+  const line = turnStatusLine({
+    cwd: '/work',
+    chain: ['author/qwen-coder:free'],
+    models: [{ id: 'author/qwen-coder:free', context: 10000 }],
+    promptTokens: 5000,
+  });
+  assert.match(line, /qwen-coder/);
+  assert.match(line, /[█░]/); // a meter bar is present
+});
+
+test('turnStatusLine fills the meter as usage climbs', () => {
+  const models = [{ id: 'm', context: 1000 }];
+  const low = turnStatusLine({ cwd: '/w', chain: ['m'], models, promptTokens: 0 });
+  const high = turnStatusLine({ cwd: '/w', chain: ['m'], models, promptTokens: 1000 });
+  assert.ok((high.match(/█/g) || []).length > (low.match(/█/g) || []).length);
+});
+
+test('turnStatusLine degrades to a neutral meter when context is unknown', () => {
+  const line = turnStatusLine({ cwd: '/w', chain: ['m'], models: [{ id: 'm' }], promptTokens: 5000 });
+  assert.match(line, /░░░░░░░░░░/);
 });

@@ -41,6 +41,7 @@ import {
   colorEnabled,
   formatToolActivityGroup,
   isGroupableToolActivity,
+  statusLine,
 } from './ui.js';
 
 const COMMANDS = [
@@ -489,6 +490,18 @@ export function formatPlanAnswers(answers) {
     'Answers to planning questions:',
     ...answers.flatMap(({ prompt, answer }, index) => [`${index + 1}. ${prompt}`, `   ${answer}`]),
   ].join('\n');
+}
+
+/**
+ * Persistent status line shown above the prompt each loop: user@host, active
+ * model, and a context-usage meter. `promptTokens` is the latest prompt size
+ * reported by the model; the head model's context window sets the denominator.
+ * When either is unknown the meter degrades to a neutral placeholder.
+ */
+export function turnStatusLine({ cwd, chain, models, promptTokens }) {
+  const limit = models.find((m) => m.id === chain[0])?.context;
+  const pct = Number.isFinite(limit) && limit > 0 ? (promptTokens / limit) * 100 : null;
+  return statusLine(cwd, chain, { pct });
 }
 
 /** readline completer: Tab completes slash commands and @ agents. */
@@ -952,7 +965,8 @@ export async function startRepl({
   let editSnapshot = null;
 
   while (true) {
-    console.log(`\n${rule()}`);
+    console.log(`\n${turnStatusLine({ cwd: process.cwd(), chain, models, promptTokens: latestPromptTokens })}`);
+    console.log(rule());
     let input = await readInput();
     let previousModeAfterTurn = null;
     console.log(rule());
